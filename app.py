@@ -62,45 +62,63 @@ def main():
 
         st.subheader("🔑 Configuration API")
 
-        anthropic_key_input = st.text_input(
-            "Clé API Anthropic",
-            type="password",
-            value="",
-            help="Requis pour l'analyse LLM. Laisser vide si configurée dans Secrets.",
-            placeholder="sk-ant-...",
-        )
+        # Lire les clés : st.secrets > env var > saisie sidebar
+        def _resolve_key(secret_name: str) -> str:
+            """Résout une clé API depuis st.secrets ou os.environ."""
+            try:
+                if secret_name in st.secrets:
+                    return str(st.secrets[secret_name])
+            except Exception:
+                pass
+            return os.environ.get(secret_name, "")
 
-        perplexity_key_input = st.text_input(
-            "Clé API Perplexity (optionnel)",
-            type="password",
-            value="",
-            help="Pour la vérification factuelle. Laisser vide si non nécessaire.",
-            placeholder="pplx-...",
-        )
+        stored_anthropic = _resolve_key("ANTHROPIC_API_KEY")
+        stored_perplexity = _resolve_key("PERPLEXITY_API_KEY")
+        stored_ncbi_key = _resolve_key("NCBI_API_KEY")
 
-        ncbi_key_input = st.text_input(
-            "Clé API NCBI (optionnel)",
-            type="password",
-            value="",
-            help="Augmente le rate limit PubMed (10 req/s au lieu de 3).",
-        )
+        # Champs de saisie (uniquement si la clé n'est pas déjà dans secrets/env)
+        if not stored_anthropic:
+            anthropic_key_input = st.text_input(
+                "Clé API Anthropic",
+                type="password",
+                key="anthropic_key",
+                help="Requis pour l'analyse LLM (Claude).",
+                placeholder="sk-ant-...",
+            )
+        else:
+            anthropic_key_input = ""
 
-        ncbi_email = st.text_input(
-            "Email NCBI",
-            value=config.NCBI_EMAIL,
-            help="Requis pour PubMed",
-        )
+        if not stored_perplexity:
+            perplexity_key_input = st.text_input(
+                "Clé API Perplexity (optionnel)",
+                type="password",
+                key="perplexity_key",
+                help="Pour la vérification factuelle.",
+                placeholder="pplx-...",
+            )
+        else:
+            perplexity_key_input = ""
 
-        # Effective keys: sidebar input > st.secrets > env var
-        effective_anthropic_key = anthropic_key_input or config.ANTHROPIC_API_KEY
-        effective_perplexity_key = perplexity_key_input or config.PERPLEXITY_API_KEY
-        effective_ncbi_key = ncbi_key_input or config.NCBI_API_KEY
+        if not stored_ncbi_key:
+            ncbi_key_input = st.text_input(
+                "Clé API NCBI (optionnel)",
+                type="password",
+                key="ncbi_key",
+                help="Augmente le rate limit PubMed (10 req/s au lieu de 3).",
+            )
+        else:
+            ncbi_key_input = ""
+
+        # Clés effectives : secrets/env > saisie sidebar
+        effective_anthropic_key = stored_anthropic or anthropic_key_input
+        effective_perplexity_key = stored_perplexity or perplexity_key_input
+        effective_ncbi_key = stored_ncbi_key or ncbi_key_input
 
         api_status = []
         if effective_anthropic_key:
             api_status.append("✅ Anthropic (Claude)")
         else:
-            api_status.append("❌ Anthropic (clé manquante)")
+            api_status.append("❌ Anthropic — saisissez la clé ci-dessus ou ajoutez `ANTHROPIC_API_KEY` dans Settings → Secrets")
 
         if effective_perplexity_key:
             api_status.append("✅ Perplexity")
@@ -126,7 +144,6 @@ def main():
         config.ANTHROPIC_API_KEY = effective_anthropic_key
         config.PERPLEXITY_API_KEY = effective_perplexity_key
         config.NCBI_API_KEY = effective_ncbi_key
-        config.NCBI_EMAIL = ncbi_email
 
         if not effective_anthropic_key:
             st.warning(
