@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import requests as req
 
-from config import PERPLEXITY_API_KEY, PERPLEXITY_MODEL, PERPLEXITY_API_URL, OUTPUT_DIR, FIGURES_DIR
+import config
 from models import Article, VerificationResult, EditorReport
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def verify_claims(report: str, progress_callback=None) -> tuple[list[Verificatio
     """Vérifie les claims du rapport via l'API Perplexity."""
     results = []
 
-    if not PERPLEXITY_API_KEY:
+    if not config.PERPLEXITY_API_KEY:
         msg = "⚠️ PERPLEXITY_API_KEY non configurée. Vérification factuelle ignorée."
         logger.warning(msg)
         if progress_callback:
@@ -69,7 +69,7 @@ def verify_claims(report: str, progress_callback=None) -> tuple[list[Verificatio
     log_progress(f"🔍 Vérification de {len(claims)} affirmations via Perplexity...")
 
     headers = {
-        "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+        "Authorization": f"Bearer {config.PERPLEXITY_API_KEY}",
         "Content-Type": "application/json",
     }
 
@@ -77,7 +77,7 @@ def verify_claims(report: str, progress_callback=None) -> tuple[list[Verificatio
         log_progress(f"  Vérification {i}/{len(claims)}...")
         try:
             payload = {
-                "model": PERPLEXITY_MODEL,
+                "model": config.PERPLEXITY_MODEL,
                 "messages": [
                     {
                         "role": "system",
@@ -93,7 +93,7 @@ def verify_claims(report: str, progress_callback=None) -> tuple[list[Verificatio
                 "max_tokens": 512,
             }
 
-            response = req.post(PERPLEXITY_API_URL, json=payload, headers=headers, timeout=30)
+            response = req.post(config.PERPLEXITY_API_URL, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
 
             content = response.json()["choices"][0]["message"]["content"]
@@ -138,7 +138,7 @@ def verify_claims(report: str, progress_callback=None) -> tuple[list[Verificatio
 
 def generate_visualizations(articles: list[Article], report: str, progress_callback=None) -> list[str]:
     """Génère toutes les infographies."""
-    os.makedirs(FIGURES_DIR, exist_ok=True)
+    os.makedirs(config.FIGURES_DIR, exist_ok=True)
     figures = []
 
     def log_progress(msg: str):
@@ -216,7 +216,7 @@ def _plot_timeline(articles: list[Article]) -> str | None:
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
 
-    path = os.path.join(FIGURES_DIR, "timeline.png")
+    path = os.path.join(config.FIGURES_DIR, "timeline.png")
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -242,7 +242,7 @@ def _plot_top_journals(articles: list[Article]) -> str | None:
     ax.invert_yaxis()
     plt.tight_layout()
 
-    path = os.path.join(FIGURES_DIR, "top_journals.png")
+    path = os.path.join(config.FIGURES_DIR, "top_journals.png")
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -293,7 +293,7 @@ def _plot_wordcloud(articles: list[Article]) -> str | None:
     ax.set_title("Nuage de mots des abstracts", fontsize=14, fontweight="bold", pad=20)
     plt.tight_layout()
 
-    path = os.path.join(FIGURES_DIR, "wordcloud.png")
+    path = os.path.join(config.FIGURES_DIR, "wordcloud.png")
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -345,7 +345,7 @@ def _plot_cocitation_network(articles: list[Article]) -> str | None:
     ax.axis("off")
     plt.tight_layout()
 
-    path = os.path.join(FIGURES_DIR, "cocitation_network.png")
+    path = os.path.join(config.FIGURES_DIR, "cocitation_network.png")
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -403,7 +403,7 @@ def _plot_theme_heatmap(articles: list[Article]) -> str | None:
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
 
-    path = os.path.join(FIGURES_DIR, "theme_heatmap.png")
+    path = os.path.join(config.FIGURES_DIR, "theme_heatmap.png")
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -445,8 +445,8 @@ def run_editing(
     editor_report.figures_generated = figures
 
     # 3. Sauvegarde du rapport d'édition
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    editor_path = os.path.join(OUTPUT_DIR, "editor_report.json")
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    editor_path = os.path.join(config.OUTPUT_DIR, "editor_report.json")
     with open(editor_path, "w", encoding="utf-8") as f:
         json.dump(editor_report.to_dict(), f, ensure_ascii=False, indent=2)
 

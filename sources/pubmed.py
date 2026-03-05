@@ -5,13 +5,13 @@ import time
 
 from Bio import Entrez
 
-from config import NCBI_EMAIL, MAX_RESULTS_PER_SOURCE
+import config
 from models import Article
 
 logger = logging.getLogger(__name__)
 
 
-def search_pubmed(keywords: str, date_from: str, date_to: str, max_results: int = MAX_RESULTS_PER_SOURCE) -> list[Article]:
+def search_pubmed(keywords: str, date_from: str, date_to: str, max_results: int | None = None) -> list[Article]:
     """Recherche PubMed et retourne une liste d'Articles.
 
     Args:
@@ -20,7 +20,11 @@ def search_pubmed(keywords: str, date_from: str, date_to: str, max_results: int 
         date_to: Date de fin (YYYY/MM/DD)
         max_results: Nombre maximum de résultats
     """
-    Entrez.email = NCBI_EMAIL
+    if max_results is None:
+        max_results = config.MAX_RESULTS_PER_SOURCE
+    Entrez.email = config.NCBI_EMAIL
+    if config.NCBI_API_KEY:
+        Entrez.api_key = config.NCBI_API_KEY
     articles = []
 
     try:

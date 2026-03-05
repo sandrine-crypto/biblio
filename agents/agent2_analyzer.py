@@ -6,7 +6,7 @@ import os
 
 import anthropic
 
-from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, OUTPUT_DIR, TOKEN_ESTIMATE_DIVISOR, MAX_TOKENS_SINGLE_CALL, CHUNK_TOKEN_SIZE
+import config
 from models import Article
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ SYNTHÈSES PARTIELLES :
 
 def _estimate_tokens(text: str) -> int:
     """Estime le nombre de tokens approximatif."""
-    return len(text) // TOKEN_ESTIMATE_DIVISOR
+    return len(text) // config.TOKEN_ESTIMATE_DIVISOR
 
 
 def _format_corpus(articles: list[Article]) -> str:
@@ -152,7 +152,7 @@ def run_analysis(
     Returns:
         Tuple (rapport_markdown, métadonnées_articles_cités)
     """
-    if not ANTHROPIC_API_KEY:
+    if not config.ANTHROPIC_API_KEY:
         msg = "⚠️ ANTHROPIC_API_KEY non configurée. Impossible de générer l'analyse."
         logger.warning(msg)
         if progress_callback:
@@ -164,14 +164,14 @@ def run_analysis(
         if progress_callback:
             progress_callback(msg)
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
     corpus_text = _format_corpus(articles)
     estimated_tokens = _estimate_tokens(corpus_text)
 
     log_progress(f"📝 Corpus: {len(articles)} articles, ~{estimated_tokens:,} tokens estimés")
 
-    if estimated_tokens <= MAX_TOKENS_SINGLE_CALL:
+    if estimated_tokens <= config.MAX_TOKENS_SINGLE_CALL:
         # Traitement en une seule passe
         log_progress("📤 Envoi du corpus complet à Claude...")
         report = _single_pass_analysis(client, corpus_text, log_progress)
@@ -181,13 +181,13 @@ def run_analysis(
         report = _map_reduce_analysis(client, articles, log_progress)
 
     # Sauvegarde
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    report_path = os.path.join(OUTPUT_DIR, "report.md")
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    report_path = os.path.join(config.OUTPUT_DIR, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
 
     cited_metadata = _extract_cited_metadata(articles)
-    meta_path = os.path.join(OUTPUT_DIR, "cited_articles.json")
+    meta_path = os.path.join(config.OUTPUT_DIR, "cited_articles.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(cited_metadata, f, ensure_ascii=False, indent=2)
 
@@ -200,7 +200,7 @@ def _single_pass_analysis(client, corpus_text: str, log_progress) -> str:
     prompt = ANALYSIS_PROMPT.format(corpus=corpus_text)
 
     response = client.messages.create(
-        model=ANTHROPIC_MODEL,
+        model=config.ANTHROPIC_MODEL,
         max_tokens=8192,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
@@ -211,7 +211,7 @@ def _single_pass_analysis(client, corpus_text: str, log_progress) -> str:
 
 def _map_reduce_analysis(client, articles: list[Article], log_progress) -> str:
     """Analyse Map-Reduce pour grands corpus."""
-    chunks = _chunk_articles(articles, CHUNK_TOKEN_SIZE)
+    chunks = _chunk_articles(articles, config.CHUNK_TOKEN_SIZE)
     log_progress(f"📦 Corpus découpé en {len(chunks)} chunks")
 
     # Phase Map
@@ -222,7 +222,7 @@ def _map_reduce_analysis(client, articles: list[Article], log_progress) -> str:
         prompt = MAP_PROMPT.format(corpus=chunk_text)
 
         response = client.messages.create(
-            model=ANTHROPIC_MODEL,
+            model=config.ANTHROPIC_MODEL,
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
@@ -238,7 +238,7 @@ def _map_reduce_analysis(client, articles: list[Article], log_progress) -> str:
     prompt = REDUCE_PROMPT.format(n=len(partial_syntheses), partial_syntheses=combined)
 
     response = client.messages.create(
-        model=ANTHROPIC_MODEL,
+        model=config.ANTHROPIC_MODEL,
         max_tokens=8192,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],

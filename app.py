@@ -1,6 +1,5 @@
 """Application Streamlit de Recherche Bibliographique Scientifique Automatisée."""
 
-import json
 import logging
 import os
 import sys
@@ -10,7 +9,7 @@ import streamlit as st
 # Add project root to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import OUTPUT_DIR, FIGURES_DIR, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY
+import config
 from models import Article, articles_to_json
 from agents.agent1_collector import run_collection
 from agents.agent2_analyzer import run_analysis
@@ -63,17 +62,11 @@ def main():
 
         st.subheader("🔑 Configuration API")
 
-        ncbi_email = st.text_input(
-            "Email NCBI",
-            value=os.environ.get("NCBI_EMAIL", "biblio@example.com"),
-            help="Requis pour PubMed",
-        )
-
         anthropic_key_input = st.text_input(
             "Clé API Anthropic",
             type="password",
             value="",
-            help="Laisser vide si configurée dans Secrets ou variable d'environnement",
+            help="Requis pour l'analyse LLM. Laisser vide si configurée dans Secrets.",
             placeholder="sk-ant-...",
         )
 
@@ -85,9 +78,23 @@ def main():
             placeholder="pplx-...",
         )
 
-        # Effective keys: sidebar input overrides config defaults
-        effective_anthropic_key = anthropic_key_input or ANTHROPIC_API_KEY
-        effective_perplexity_key = perplexity_key_input or PERPLEXITY_API_KEY
+        ncbi_key_input = st.text_input(
+            "Clé API NCBI (optionnel)",
+            type="password",
+            value="",
+            help="Augmente le rate limit PubMed (10 req/s au lieu de 3).",
+        )
+
+        ncbi_email = st.text_input(
+            "Email NCBI",
+            value=config.NCBI_EMAIL,
+            help="Requis pour PubMed",
+        )
+
+        # Effective keys: sidebar input > st.secrets > env var
+        effective_anthropic_key = anthropic_key_input or config.ANTHROPIC_API_KEY
+        effective_perplexity_key = perplexity_key_input or config.PERPLEXITY_API_KEY
+        effective_ncbi_key = ncbi_key_input or config.NCBI_API_KEY
 
         api_status = []
         if effective_anthropic_key:
@@ -99,6 +106,9 @@ def main():
             api_status.append("✅ Perplexity")
         else:
             api_status.append("⚠️ Perplexity (optionnel)")
+
+        if effective_ncbi_key:
+            api_status.append("✅ NCBI API Key")
 
         st.markdown("**Statut des APIs :**\n" + "\n".join(f"- {s}" for s in api_status))
 
@@ -112,13 +122,17 @@ def main():
             st.error("Veuillez entrer des mots-clés de recherche.")
             return
 
-        # Set API keys from sidebar inputs (override config)
-        import config
+        # Override config with effective keys (sidebar > secrets > env)
+        config.ANTHROPIC_API_KEY = effective_anthropic_key
+        config.PERPLEXITY_API_KEY = effective_perplexity_key
+        config.NCBI_API_KEY = effective_ncbi_key
         config.NCBI_EMAIL = ncbi_email
-        if effective_anthropic_key:
-            config.ANTHROPIC_API_KEY = effective_anthropic_key
-        if effective_perplexity_key:
-            config.PERPLEXITY_API_KEY = effective_perplexity_key
+
+        if not effective_anthropic_key:
+            st.warning(
+                "⚠️ Clé API Anthropic non configurée. L'analyse LLM sera en mode dégradé. "
+                "Ajoutez la clé dans la sidebar ou dans Settings → Secrets (ANTHROPIC_API_KEY)."
+            )
 
         # Build sources list
         sources_enabled = []
@@ -314,7 +328,6 @@ def _display_results():
     with tab_verification:
         if editor_report and editor_report.verifications:
             score = editor_report.confidence_score
-            color = "green" if score >= 70 else ("orange" if score >= 50 else "red")
             st.metric("Score de confiance global", f"{score:.0f}%")
 
             for v in editor_report.verifications:
