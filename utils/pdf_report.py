@@ -7,7 +7,7 @@ from datetime import datetime
 
 from jinja2 import Environment, FileSystemLoader
 
-from config import OUTPUT_DIR
+import config
 from models import Article, EditorReport
 
 logger = logging.getLogger(__name__)
@@ -135,8 +135,8 @@ def generate_pdf(
 
         # Generate PDF
         if output_path is None:
-            os.makedirs(OUTPUT_DIR, exist_ok=True)
-            output_path = os.path.join(OUTPUT_DIR, "rapport_bibliographique.pdf")
+            os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+            output_path = os.path.join(config.OUTPUT_DIR, "rapport_bibliographique.pdf")
 
         HTML(string=html_content).write_pdf(output_path)
         logger.info(f"PDF généré: {output_path}")

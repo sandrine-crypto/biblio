@@ -4,7 +4,7 @@ import logging
 import os
 import re
 
-from config import OUTPUT_DIR
+import config
 from models import Article
 
 logger = logging.getLogger(__name__)
@@ -75,8 +75,8 @@ def generate_bibtex(articles: list[Article], output_path: str | None = None) -> 
     bibtex_content = "\n\n".join(entries)
 
     if output_path is None:
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        output_path = os.path.join(OUTPUT_DIR, "references.bib")
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+        output_path = os.path.join(config.OUTPUT_DIR, "references.bib")
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(bibtex_content)

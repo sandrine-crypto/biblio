@@ -5,7 +5,7 @@ import re
 
 from rapidfuzz import fuzz
 
-from config import DEDUP_TITLE_THRESHOLD
+import config
 from models import Article
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def deduplicate_articles(articles: list[Article]) -> tuple[list[Article], int, l
                 continue
 
             score = fuzz.token_sort_ratio(norm_i, norm_j)
-            if score >= DEDUP_TITLE_THRESHOLD:
+            if score >= config.DEDUP_TITLE_THRESHOLD:
                 # Garder le plus complet
                 if article_i.completeness_score() >= all_candidates[j].completeness_score():
                     removed_indices.add(j)

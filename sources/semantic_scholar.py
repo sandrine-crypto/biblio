@@ -4,7 +4,7 @@ import logging
 import time
 import requests
 
-from config import MAX_RESULTS_PER_SOURCE
+import config
 from models import Article
 
 logger = logging.getLogger(__name__)
@@ -13,9 +13,11 @@ BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 FIELDS = "title,authors,year,abstract,journal,externalIds,citationCount,fieldsOfStudy"
 
 
-def search_semantic_scholar(keywords: str, date_from: str, date_to: str, max_results: int = MAX_RESULTS_PER_SOURCE) -> list[Article]:
+def search_semantic_scholar(keywords: str, date_from: str, date_to: str, max_results: int | None = None) -> list[Article]:
     """Recherche Semantic Scholar et retourne une liste d'Articles."""
     articles = []
+    if max_results is None:
+        max_results = config.MAX_RESULTS_PER_SOURCE
 
     try:
         year_from = date_from.split("/")[0] if "/" in date_from else date_from[:4]

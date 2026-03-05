@@ -4,7 +4,7 @@ import json
 import logging
 import os
 
-from config import OUTPUT_DIR
+import config
 from models import Article, CollectionReport, articles_to_json
 from sources.pubmed import search_pubmed
 from sources.semantic_scholar import search_semantic_scholar
@@ -90,12 +90,12 @@ def run_collection(
     )
 
     # Sauvegarde JSON
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    corpus_path = os.path.join(OUTPUT_DIR, "corpus.json")
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    corpus_path = os.path.join(config.OUTPUT_DIR, "corpus.json")
     with open(corpus_path, "w", encoding="utf-8") as f:
         f.write(articles_to_json(deduplicated))
 
-    report_path = os.path.join(OUTPUT_DIR, "collection_report.json")
+    report_path = os.path.join(config.OUTPUT_DIR, "collection_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
 
