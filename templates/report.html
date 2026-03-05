@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Rapport Bibliographique Scientifique</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2.5cm 2cm;
+            @top-center {
+                content: "Rapport Bibliographique";
+                font-size: 9pt;
+                color: #666;
+            }
+            @bottom-center {
+                content: "Page " counter(page) " / " counter(pages);
+                font-size: 9pt;
+                color: #666;
+            }
+        }
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            font-size: 11pt;
+            line-height: 1.6;
+            color: #1a1a1a;
+            max-width: 100%;
+        }
+        h1 {
+            font-size: 22pt;
+            color: #1a237e;
+            border-bottom: 3px solid #1a237e;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        h2 {
+            font-size: 16pt;
+            color: #283593;
+            border-bottom: 1px solid #c5cae9;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            font-size: 13pt;
+            color: #3949ab;
+            margin-top: 20px;
+        }
+        .meta-info {
+            background: #e8eaf6;
+            padding: 15px 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-size: 10pt;
+        }
+        .meta-info p {
+            margin: 5px 0;
+        }
+        .confidence-score {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 10px 15px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .confidence-score.low {
+            background: #fff3e0;
+            border-left-color: #ff9800;
+        }
+        .confidence-score.very-low {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+        .verification {
+            background: #f5f5f5;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-size: 10pt;
+        }
+        .verification.unverified {
+            background: #fff8e1;
+            border-left: 3px solid #ffc107;
+        }
+        .figure-container {
+            text-align: center;
+            margin: 25px 0;
+            page-break-inside: avoid;
+        }
+        .figure-container img {
+            max-width: 100%;
+            height: auto;
+        }
+        .figure-caption {
+            font-size: 9pt;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+        .report-content {
+            text-align: justify;
+        }
+        .report-content p {
+            margin: 10px 0;
+        }
+        blockquote {
+            border-left: 3px solid #c5cae9;
+            padding-left: 15px;
+            color: #555;
+            font-style: italic;
+        }
+        code {
+            background: #f5f5f5;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 10pt;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 10pt;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #e8eaf6;
+            font-weight: bold;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 1px solid #ccc;
+            font-size: 9pt;
+            color: #999;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+
+    <div class="meta-info">
+        <p><strong>Mots-clés de recherche :</strong> {{ keywords }}</p>
+        <p><strong>Période :</strong> {{ date_from }} — {{ date_to }}</p>
+        <p><strong>Articles analysés :</strong> {{ article_count }}</p>
+        <p><strong>Sources :</strong> {{ sources }}</p>
+        <p><strong>Date du rapport :</strong> {{ report_date }}</p>
+    </div>
+
+    {% if confidence_score > 0 %}
+    <div class="confidence-score {% if confidence_score < 50 %}very-low{% elif confidence_score < 70 %}low{% endif %}">
+        Score de confiance factuelle : {{ "%.0f"|format(confidence_score) }}%
+    </div>
+    {% endif %}
+
+    <div class="report-content">
+        {{ report_html | safe }}
+    </div>
+
+    {% if figures %}
+    <h2>Infographies</h2>
+    {% for figure in figures %}
+    <div class="figure-container">
+        <img src="file://{{ figure }}" alt="Figure {{ loop.index }}">
+        <div class="figure-caption">Figure {{ loop.index }}. {{ figure_captions[loop.index0] if figure_captions else '' }}</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if verifications %}
+    <h2>Vérification factuelle</h2>
+    {% for v in verifications %}
+    <div class="verification {% if not v.verified %}unverified{% endif %}">
+        <p><strong>Affirmation :</strong> {{ v.claim[:200] }}...</p>
+        <p><strong>Vérifié :</strong> {{ "Oui" if v.verified else "Non" }}
+           (confiance : {{ "%.0f"|format(v.confidence * 100) }}%)</p>
+        {% if v.correction %}
+        <p><strong>Correction :</strong> {{ v.correction }}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="footer">
+        Rapport généré automatiquement par l'application de recherche bibliographique scientifique.
+    </div>
+</body>
+</html>
