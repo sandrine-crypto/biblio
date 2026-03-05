@@ -69,16 +69,36 @@ def main():
             help="Requis pour PubMed",
         )
 
+        anthropic_key_input = st.text_input(
+            "Clé API Anthropic",
+            type="password",
+            value="",
+            help="Laisser vide si configurée dans Secrets ou variable d'environnement",
+            placeholder="sk-ant-...",
+        )
+
+        perplexity_key_input = st.text_input(
+            "Clé API Perplexity (optionnel)",
+            type="password",
+            value="",
+            help="Pour la vérification factuelle. Laisser vide si non nécessaire.",
+            placeholder="pplx-...",
+        )
+
+        # Effective keys: sidebar input overrides config defaults
+        effective_anthropic_key = anthropic_key_input or ANTHROPIC_API_KEY
+        effective_perplexity_key = perplexity_key_input or PERPLEXITY_API_KEY
+
         api_status = []
-        if ANTHROPIC_API_KEY:
+        if effective_anthropic_key:
             api_status.append("✅ Anthropic (Claude)")
         else:
-            api_status.append("❌ Anthropic (ANTHROPIC_API_KEY manquante)")
+            api_status.append("❌ Anthropic (clé manquante)")
 
-        if PERPLEXITY_API_KEY:
+        if effective_perplexity_key:
             api_status.append("✅ Perplexity")
         else:
-            api_status.append("⚠️ Perplexity (optionnel, PERPLEXITY_API_KEY)")
+            api_status.append("⚠️ Perplexity (optionnel)")
 
         st.markdown("**Statut des APIs :**\n" + "\n".join(f"- {s}" for s in api_status))
 
@@ -92,9 +112,13 @@ def main():
             st.error("Veuillez entrer des mots-clés de recherche.")
             return
 
-        # Set NCBI email
+        # Set API keys from sidebar inputs (override config)
         import config
         config.NCBI_EMAIL = ncbi_email
+        if effective_anthropic_key:
+            config.ANTHROPIC_API_KEY = effective_anthropic_key
+        if effective_perplexity_key:
+            config.PERPLEXITY_API_KEY = effective_perplexity_key
 
         # Build sources list
         sources_enabled = []

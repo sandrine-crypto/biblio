@@ -2,9 +2,21 @@
 
 import os
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
-NCBI_EMAIL = os.environ.get("NCBI_EMAIL", "biblio@example.com")
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Lit un secret depuis st.secrets (Streamlit Cloud) ou os.environ (local)."""
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.environ.get(key, default)
+
+
+ANTHROPIC_API_KEY = _get_secret("ANTHROPIC_API_KEY")
+PERPLEXITY_API_KEY = _get_secret("PERPLEXITY_API_KEY")
+NCBI_EMAIL = _get_secret("NCBI_EMAIL", "biblio@example.com")
 
 ANTHROPIC_MODEL = "claude-opus-4-6"
 PERPLEXITY_MODEL = "llama-3.1-sonar-large-128k-online"
