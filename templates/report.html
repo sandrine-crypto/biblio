@@ -2,189 +2,398 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Rapport Bibliographique Scientifique</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
     <style>
-        @page {
-            size: A4;
-            margin: 2.5cm 2cm;
-            @top-center {
-                content: "Rapport Bibliographique";
-                font-size: 9pt;
-                color: #666;
-            }
-            @bottom-center {
-                content: "Page " counter(page) " / " counter(pages);
-                font-size: 9pt;
-                color: #666;
-            }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --primary: #1a237e;
+            --primary-light: #3949ab;
+            --primary-bg: #e8eaf6;
+            --accent: #00bcd4;
+            --accent-dark: #0097a7;
+            --success: #2e7d32;
+            --success-bg: #e8f5e9;
+            --warning: #f57f17;
+            --warning-bg: #fff8e1;
+            --danger: #c62828;
+            --danger-bg: #ffebee;
+            --text: #1a1a2e;
+            --text-secondary: #546e7a;
+            --bg: #fafbfe;
+            --card-bg: #ffffff;
+            --border: #e0e6ed;
+            --shadow: 0 2px 12px rgba(26, 35, 126, 0.08);
+            --shadow-lg: 0 8px 32px rgba(26, 35, 126, 0.12);
         }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: 'Georgia', 'Times New Roman', serif;
-            font-size: 11pt;
-            line-height: 1.6;
-            color: #1a1a1a;
-            max-width: 100%;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 15px;
+            line-height: 1.7;
+            color: var(--text);
+            background: var(--bg);
+            -webkit-font-smoothing: antialiased;
         }
-        h1 {
-            font-size: 22pt;
-            color: #1a237e;
-            border-bottom: 3px solid #1a237e;
-            padding-bottom: 10px;
-            margin-top: 0;
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
         }
-        h2 {
-            font-size: 16pt;
-            color: #283593;
-            border-bottom: 1px solid #c5cae9;
-            padding-bottom: 5px;
-            margin-top: 30px;
+
+        /* Hero Header */
+        .hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 50%, var(--accent-dark) 100%);
+            color: white;
+            padding: 48px 0 40px;
+            position: relative;
+            overflow: hidden;
         }
-        h3 {
-            font-size: 13pt;
-            color: #3949ab;
-            margin-top: 20px;
+        .hero::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
         }
-        .meta-info {
-            background: #e8eaf6;
-            padding: 15px 20px;
-            border-radius: 5px;
-            margin: 20px 0;
-            font-size: 10pt;
+        .hero h1 {
+            font-size: 2.2em;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
         }
-        .meta-info p {
-            margin: 5px 0;
+        .hero .subtitle {
+            font-size: 1.1em;
+            opacity: 0.85;
+            font-weight: 300;
         }
-        .confidence-score {
-            background: #e8f5e9;
-            border-left: 4px solid #4caf50;
-            padding: 10px 15px;
-            margin: 20px 0;
-            font-weight: bold;
+
+        /* KPI Cards */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: -32px 0 32px;
+            position: relative;
+            z-index: 2;
         }
-        .confidence-score.low {
-            background: #fff3e0;
-            border-left-color: #ff9800;
-        }
-        .confidence-score.very-low {
-            background: #ffebee;
-            border-left-color: #f44336;
-        }
-        .verification {
-            background: #f5f5f5;
-            padding: 10px 15px;
-            margin: 10px 0;
-            border-radius: 3px;
-            font-size: 10pt;
-        }
-        .verification.unverified {
-            background: #fff8e1;
-            border-left: 3px solid #ffc107;
-        }
-        .figure-container {
+        .kpi-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px 24px;
+            box-shadow: var(--shadow-lg);
             text-align: center;
-            margin: 25px 0;
-            page-break-inside: avoid;
         }
-        .figure-container img {
-            max-width: 100%;
-            height: auto;
+        .kpi-value {
+            font-size: 2em;
+            font-weight: 800;
+            color: var(--primary);
+            line-height: 1.2;
         }
-        .figure-caption {
-            font-size: 9pt;
-            color: #666;
-            font-style: italic;
-            margin-top: 5px;
+        .kpi-label {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
         }
+        .kpi-card.confidence .kpi-value { color: var(--success); }
+        .kpi-card.confidence.low .kpi-value { color: var(--warning); }
+        .kpi-card.confidence.very-low .kpi-value { color: var(--danger); }
+
+        /* Sections */
+        .section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 32px 36px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        h2 {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid var(--primary-bg);
+        }
+
+        h3 {
+            font-size: 1.15em;
+            font-weight: 600;
+            color: var(--primary-light);
+            margin-top: 24px;
+            margin-bottom: 12px;
+        }
+
+        h4 {
+            font-size: 1em;
+            font-weight: 600;
+            color: var(--text);
+            margin-top: 18px;
+            margin-bottom: 8px;
+        }
+
+        p { margin-bottom: 12px; }
+
+        a {
+            color: var(--accent-dark);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s;
+        }
+        a:hover { border-bottom-color: var(--accent-dark); }
+
+        /* Report Content */
         .report-content {
             text-align: justify;
+            hyphens: auto;
         }
-        .report-content p {
-            margin: 10px 0;
+        .report-content h1 { font-size: 1.5em; color: var(--primary); margin-top: 28px; border-bottom: 2px solid var(--primary-bg); padding-bottom: 8px; }
+        .report-content h2 { font-size: 1.3em; border-bottom: 2px solid var(--primary-bg); }
+        .report-content h3 { font-size: 1.1em; }
+        .report-content ul, .report-content ol {
+            margin: 12px 0 12px 24px;
         }
-        blockquote {
-            border-left: 3px solid #c5cae9;
-            padding-left: 15px;
-            color: #555;
+        .report-content li { margin-bottom: 6px; }
+        .report-content strong { color: var(--text); }
+        .report-content blockquote {
+            border-left: 4px solid var(--accent);
+            padding: 12px 20px;
+            margin: 16px 0;
+            background: #f0f9fa;
+            border-radius: 0 8px 8px 0;
             font-style: italic;
+            color: var(--text-secondary);
         }
-        code {
-            background: #f5f5f5;
-            padding: 2px 5px;
-            border-radius: 3px;
-            font-size: 10pt;
+
+        /* Figures / Infographics */
+        .figures-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 24px;
+            margin-top: 16px;
         }
-        table {
+        .figure-card {
+            background: var(--bg);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .figure-card img {
             width: 100%;
-            border-collapse: collapse;
-            margin: 15px 0;
-            font-size: 10pt;
+            height: auto;
+            display: block;
         }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
+        .figure-caption {
+            padding: 12px 16px;
+            font-size: 0.88em;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-align: center;
+            background: white;
+        }
+
+        /* Verification */
+        .verification-list { margin-top: 16px; }
+        .verification-item {
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            border-left: 4px solid var(--success);
+            background: var(--success-bg);
+        }
+        .verification-item.unverified {
+            border-left-color: var(--warning);
+            background: var(--warning-bg);
+        }
+        .verification-item.corrected {
+            border-left-color: var(--danger);
+            background: var(--danger-bg);
+        }
+        .verification-claim { font-weight: 500; margin-bottom: 6px; }
+        .verification-meta { font-size: 0.85em; color: var(--text-secondary); }
+        .verification-correction {
+            margin-top: 8px;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 6px;
+            font-size: 0.92em;
+        }
+
+        /* Article Table */
+        .articles-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 0.9em;
+            margin-top: 16px;
+        }
+        .articles-table th {
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            padding: 12px 14px;
             text-align: left;
         }
-        th {
-            background: #e8eaf6;
-            font-weight: bold;
+        .articles-table th:first-child { border-radius: 8px 0 0 0; }
+        .articles-table th:last-child { border-radius: 0 8px 0 0; }
+        .articles-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
         }
+        .articles-table tr:nth-child(even) td { background: #f8f9fc; }
+        .articles-table tr:hover td { background: var(--primary-bg); }
+
+        /* Footer */
         .footer {
-            margin-top: 40px;
-            padding-top: 15px;
-            border-top: 1px solid #ccc;
-            font-size: 9pt;
-            color: #999;
             text-align: center;
+            padding: 32px 0;
+            color: var(--text-secondary);
+            font-size: 0.85em;
+        }
+
+        /* Print */
+        @media print {
+            body { background: white; font-size: 11pt; }
+            .container { max-width: 100%; padding: 0; }
+            .hero { padding: 24px 0; }
+            .kpi-grid { margin-top: 16px; }
+            .section { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+            .figures-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .figures-grid { grid-template-columns: 1fr; }
+            .section { padding: 20px; }
+            .hero h1 { font-size: 1.6em; }
         }
     </style>
 </head>
 <body>
-    <h1>{{ title }}</h1>
 
-    <div class="meta-info">
-        <p><strong>Mots-clés de recherche :</strong> {{ keywords }}</p>
-        <p><strong>Période :</strong> {{ date_from }} — {{ date_to }}</p>
-        <p><strong>Articles analysés :</strong> {{ article_count }}</p>
-        <p><strong>Sources :</strong> {{ sources }}</p>
-        <p><strong>Date du rapport :</strong> {{ report_date }}</p>
+<div class="hero">
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <div class="subtitle">{{ keywords }} | {{ date_from }} — {{ date_to }} | {{ report_date }}</div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-value">{{ article_count }}</div>
+            <div class="kpi-label">Articles analysés</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-value">{{ sources }}</div>
+            <div class="kpi-label">Sources</div>
+        </div>
+        {% if confidence_score > 0 %}
+        <div class="kpi-card confidence {% if confidence_score < 50 %}very-low{% elif confidence_score < 70 %}low{% endif %}">
+            <div class="kpi-value">{{ "%.0f"|format(confidence_score) }}%</div>
+            <div class="kpi-label">Confiance factuelle</div>
+        </div>
+        {% endif %}
+        {% if year_range %}
+        <div class="kpi-card">
+            <div class="kpi-value">{{ year_range }}</div>
+            <div class="kpi-label">Période couverte</div>
+        </div>
+        {% endif %}
     </div>
 
-    {% if confidence_score > 0 %}
-    <div class="confidence-score {% if confidence_score < 50 %}very-low{% elif confidence_score < 70 %}low{% endif %}">
-        Score de confiance factuelle : {{ "%.0f"|format(confidence_score) }}%
+    <div class="section">
+        <h2>Rapport de synthèse</h2>
+        <div class="report-content">
+            {{ report_html | safe }}
+        </div>
+    </div>
+
+    {% if figures_b64 %}
+    <div class="section">
+        <h2>Infographies</h2>
+        <div class="figures-grid">
+            {% for fig in figures_b64 %}
+            <div class="figure-card">
+                <img src="data:image/png;base64,{{ fig.data }}" alt="{{ fig.caption }}">
+                <div class="figure-caption">Figure {{ loop.index }}. {{ fig.caption }}</div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
 
-    <div class="report-content">
-        {{ report_html | safe }}
+    {% if articles_data %}
+    <div class="section">
+        <h2>Corpus d'articles ({{ articles_data|length }})</h2>
+        <div style="overflow-x:auto;">
+        <table class="articles-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Titre</th>
+                    <th>Auteurs</th>
+                    <th>Journal</th>
+                    <th>Année</th>
+                    <th>Citations</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in articles_data %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{% if a.url %}<a href="{{ a.url }}" target="_blank">{{ a.title }}</a>{% else %}{{ a.title }}{% endif %}</td>
+                    <td>{{ a.authors }}</td>
+                    <td>{{ a.journal or '—' }}</td>
+                    <td>{{ a.year or '—' }}</td>
+                    <td>{{ a.citations }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
     </div>
-
-    {% if figures %}
-    <h2>Infographies</h2>
-    {% for figure in figures %}
-    <div class="figure-container">
-        <img src="file://{{ figure }}" alt="Figure {{ loop.index }}">
-        <div class="figure-caption">Figure {{ loop.index }}. {{ figure_captions[loop.index0] if figure_captions else '' }}</div>
-    </div>
-    {% endfor %}
     {% endif %}
 
     {% if verifications %}
-    <h2>Vérification factuelle</h2>
-    {% for v in verifications %}
-    <div class="verification {% if not v.verified %}unverified{% endif %}">
-        <p><strong>Affirmation :</strong> {{ v.claim[:200] }}...</p>
-        <p><strong>Vérifié :</strong> {{ "Oui" if v.verified else "Non" }}
-           (confiance : {{ "%.0f"|format(v.confidence * 100) }}%)</p>
-        {% if v.correction %}
-        <p><strong>Correction :</strong> {{ v.correction }}</p>
-        {% endif %}
+    <div class="section">
+        <h2>Vérification factuelle</h2>
+        <div class="verification-list">
+            {% for v in verifications %}
+            <div class="verification-item {% if not v.verified %}{% if v.correction %}corrected{% else %}unverified{% endif %}{% endif %}">
+                <div class="verification-claim">{{ v.claim }}</div>
+                <div class="verification-meta">
+                    {% if v.verified %}✅ Vérifié{% else %}⚠️ Non vérifié{% endif %}
+                    — Confiance : {{ "%.0f"|format(v.confidence * 100) }}%
+                    {% if v.source %} — Source : {{ v.source }}{% endif %}
+                </div>
+                {% if v.correction %}
+                <div class="verification-correction">
+                    <strong>Correction :</strong> {{ v.correction }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
     </div>
-    {% endfor %}
     {% endif %}
 
     <div class="footer">
-        Rapport généré automatiquement par l'application de recherche bibliographique scientifique.
+        Rapport généré automatiquement — Recherche Bibliographique Scientifique — {{ report_date }}
     </div>
+</div>
+
 </body>
 </html>

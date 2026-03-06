@@ -15,7 +15,7 @@ from agents.agent1_collector import run_collection
 from agents.agent2_analyzer import run_analysis
 from agents.agent3_editor import run_editing
 from utils.bibtex_export import generate_bibtex
-from utils.pdf_report import generate_pdf
+from utils.pdf_report import generate_html_report
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -40,10 +40,13 @@ def main():
     with st.sidebar:
         st.header("⚙️ Paramètres de recherche")
 
-        keywords = st.text_input(
+        keywords = st.text_area(
             "Mots-clés de recherche",
-            placeholder="ex: CRISPR gene therapy cancer",
-            help="Termes de recherche séparés par des espaces",
+            placeholder='ex: "gene therapy" CRISPR cancer "immune checkpoint"',
+            help='Entrez autant de mots-clés que nécessaire. '
+                 'Utilisez des guillemets pour les expressions exactes : "gene therapy". '
+                 'Séparez les mots-clés par des espaces ou des retours à la ligne.',
+            height=80,
         )
 
         col1, col2 = st.columns(2)
@@ -226,23 +229,25 @@ def main():
                 logs_3.append(msg)
                 log_area_3.markdown("\n\n".join(logs_3))
 
-            editor_report = run_editing(
+            editor_report, corrected_report = run_editing(
                 articles=articles,
                 report_markdown=report_markdown,
                 progress_callback=progress_3,
             )
 
+            # Use corrected report from now on
+            report_markdown = corrected_report
+
             status3.update(label="✅ Agent 3 terminé", state="complete")
 
         st.session_state["editor_report"] = editor_report
+        st.session_state["report_markdown"] = report_markdown
 
         # ─── Exports ─────────────────────────────────────────────────────
         with st.status("📦 Génération des exports...", expanded=False) as status_export:
-            # BibTeX
             bibtex_content = generate_bibtex(articles)
 
-            # PDF
-            pdf_path = generate_pdf(
+            html_report = generate_html_report(
                 report_markdown=report_markdown,
                 articles=articles,
                 editor_report=editor_report,
@@ -254,7 +259,7 @@ def main():
             status_export.update(label="✅ Exports générés", state="complete")
 
         st.session_state["bibtex_content"] = bibtex_content
-        st.session_state["pdf_path"] = pdf_path
+        st.session_state["html_report"] = html_report
 
         st.success("🎉 Pipeline terminé avec succès !")
 
@@ -269,7 +274,7 @@ def _display_results():
     report_markdown = st.session_state.get("report_markdown", "")
     editor_report = st.session_state.get("editor_report")
     bibtex_content = st.session_state.get("bibtex_content", "")
-    pdf_path = st.session_state.get("pdf_path")
+    html_report = st.session_state.get("html_report", "")
 
     st.divider()
 
@@ -295,17 +300,16 @@ def _display_results():
         )
 
     with col_dl3:
-        if pdf_path and os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f:
-                st.download_button(
-                    "📥 Télécharger PDF",
-                    data=f.read(),
-                    file_name="rapport_bibliographique.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                )
+        if html_report:
+            st.download_button(
+                "📥 Télécharger Rapport HTML",
+                data=html_report,
+                file_name="rapport_bibliographique.html",
+                mime="text/html",
+                use_container_width=True,
+            )
         else:
-            st.button("📥 PDF non disponible", disabled=True, use_container_width=True)
+            st.button("📥 Rapport non disponible", disabled=True, use_container_width=True)
 
     # Tabs
     tab_report, tab_figures, tab_data, tab_verification = st.tabs([
@@ -313,7 +317,7 @@ def _display_results():
     ])
 
     with tab_report:
-        st.markdown(report_markdown)
+        st.markdown(report_markdown, unsafe_allow_html=True)
 
     with tab_figures:
         if editor_report and editor_report.figures_generated:

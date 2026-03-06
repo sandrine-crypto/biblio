@@ -14,10 +14,11 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """Tu es un chercheur scientifique de niveau Nature/Science. Tu produis des revues de littérature rigoureuses et exhaustives.
 
 RÈGLES IMPÉRATIVES :
-1. Toute affirmation doit être tracée vers un DOI source. Cite sous la forme [DOI: xxx].
+1. Toute affirmation doit être tracée vers un article source. Cite avec un lien hypertexte Markdown vers l'URL de l'article : [Auteur et al., Année](URL). Si pas d'URL, utilise [DOI: xxx].
 2. N'invente AUCUNE information qui n'est pas dans le corpus fourni.
 3. Niveau de langage : revue Nature/Science, précis et académique.
-4. Écris en français sauf si les termes techniques n'ont pas d'équivalent français courant."""
+4. Écris en français sauf si les termes techniques n'ont pas d'équivalent français courant.
+5. Chaque donnée chiffrée (pourcentage, p-value, effectif, odds ratio, etc.) DOIT être exactement celle de l'article cité. Aucune approximation."""
 
 ANALYSIS_PROMPT = """Analyse le corpus d'articles scientifiques suivant et produis un rapport structuré.
 
@@ -37,11 +38,11 @@ STRUCTURE OBLIGATOIRE DU RAPPORT :
 
 ## 5. Articles clés
 (Top 10 des articles les plus pertinents avec justification. Format :
-- **Titre** — Auteurs (Année). Journal. DOI: xxx
+- [**Titre**](URL) — Auteurs (Année). Journal. DOI: xxx
   Justification de la sélection.)
 
 ## 6. Bibliographie Vancouver
-(Tous les articles cités dans le rapport, numérotés au format Vancouver.)
+(Tous les articles cités dans le rapport, numérotés au format Vancouver. Chaque référence doit inclure un lien hypertexte vers l'article : [N] Auteurs. Titre. Journal. Année. [Lien](URL))
 
 ---
 
@@ -97,6 +98,8 @@ def _format_corpus(articles: list[Article]) -> str:
     for i, article in enumerate(articles, 1):
         lines = [f"### Article {i}"]
         lines.append(f"**Titre:** {article.title}")
+        if article.url:
+            lines.append(f"**URL:** {article.url}")
         if article.doi:
             lines.append(f"**DOI:** {article.doi}")
         if article.authors:

@@ -1,11 +1,13 @@
-"""Génération du rapport PDF via WeasyPrint."""
+"""Génération du rapport HTML infographique téléchargeable."""
 
+import base64
 import logging
 import os
 import re
 from datetime import datetime
 
 from jinja2 import Environment, FileSystemLoader
+import markdown as md
 
 import config
 from models import Article, EditorReport
@@ -22,46 +24,109 @@ FIGURE_CAPTIONS = {
 
 
 def _markdown_to_html(markdown_text: str) -> str:
-    """Convertit le Markdown en HTML basique."""
-    html = markdown_text
-
-    # Headers
-    html = re.sub(r'^######\s+(.+)$', r'<h6>\1</h6>', html, flags=re.MULTILINE)
-    html = re.sub(r'^#####\s+(.+)$', r'<h5>\1</h5>', html, flags=re.MULTILINE)
-    html = re.sub(r'^####\s+(.+)$', r'<h4>\1</h4>', html, flags=re.MULTILINE)
-    html = re.sub(r'^###\s+(.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
-    html = re.sub(r'^##\s+(.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
-    html = re.sub(r'^#\s+(.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
-
-    # Bold and italic
-    html = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', html)
-    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
-
-    # Lists
-    html = re.sub(r'^- (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
-    html = re.sub(r'(<li>.*?</li>\n?)+', lambda m: '<ul>' + m.group(0) + '</ul>', html)
-
-    # Numbered lists
-    html = re.sub(r'^\d+\.\s+(.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
-
-    # Paragraphs (lines not already in tags)
-    lines = html.split('\n')
-    result = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith('<'):
-            result.append(f'<p>{stripped}</p>')
-        else:
-            result.append(line)
-    html = '\n'.join(result)
-
-    # Horizontal rules
-    html = re.sub(r'^---+$', '<hr>', html, flags=re.MULTILINE)
-
-    return html
+    """Convertit le Markdown en HTML via la bibliothèque markdown."""
+    return md.markdown(
+        markdown_text,
+        extensions=["extra", "smarty", "sane_lists", "toc"],
+        output_format="html",
+    )
 
 
+def _encode_figure_b64(fig_path: str) -> str | None:
+    """Encode une image en base64 pour l'intégration HTML."""
+    if not os.path.exists(fig_path):
+        return None
+    with open(fig_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+
+def generate_html_report(
+    report_markdown: str,
+    articles: list[Article],
+    editor_report: EditorReport,
+    keywords: str,
+    date_from: str,
+    date_to: str,
+) -> str:
+    """Génère le rapport HTML infographique standalone.
+
+    Returns:
+        Contenu HTML complet (string) prêt à télécharger.
+    """
+    templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+    env = Environment(loader=FileSystemLoader(templates_dir))
+    template = env.get_template("report.html")
+
+    report_html = _markdown_to_html(report_markdown)
+
+    # Figures en base64
+    figures_b64 = []
+    for fig_path in editor_report.figures_generated:
+        b64 = _encode_figure_b64(fig_path)
+        if b64:
+            fname = os.path.basename(fig_path)
+            caption = FIGURE_CAPTIONS.get(fname, fname)
+            figures_b64.append({"data": b64, "caption": caption})
+
+    # Sources
+    sources_list = set(a.source for a in articles)
+    sources_str = ", ".join(sorted(sources_list))
+
+    # Période effective
+    years = [a.year for a in articles if a.year]
+    year_range = f"{min(years)}-{max(years)}" if years else ""
+
+    # Articles data pour le tableau
+    articles_data = []
+    for a in articles:
+        articles_data.append({
+            "title": a.title,
+            "url": a.url,
+            "authors": ", ".join(a.authors[:3]) + ("..." if len(a.authors) > 3 else ""),
+            "journal": a.journal,
+            "year": a.year,
+            "citations": a.citation_count,
+        })
+
+    # Vérifications
+    verifications = [
+        {
+            "claim": v.claim,
+            "verified": v.verified,
+            "confidence": v.confidence,
+            "correction": v.correction,
+            "source": v.source,
+        }
+        for v in editor_report.verifications
+    ]
+
+    html_content = template.render(
+        title="Rapport de Recherche Bibliographique Scientifique",
+        keywords=keywords,
+        date_from=date_from,
+        date_to=date_to,
+        article_count=len(articles),
+        sources=sources_str,
+        report_date=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        confidence_score=editor_report.confidence_score,
+        year_range=year_range,
+        report_html=report_html,
+        figures_b64=figures_b64,
+        articles_data=articles_data,
+        verifications=verifications,
+    )
+
+    # Sauvegarde locale
+    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+    output_path = os.path.join(config.OUTPUT_DIR, "rapport_bibliographique.html")
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+    logger.info(f"HTML report generated: {output_path}")
+    return html_content
+
+
+# Keep backward-compatible alias
 def generate_pdf(
     report_markdown: str,
     articles: list[Article],
@@ -71,77 +136,9 @@ def generate_pdf(
     date_to: str,
     output_path: str | None = None,
 ) -> str | None:
-    """Génère le rapport PDF.
-
-    Returns:
-        Chemin du PDF généré, ou None si erreur.
-    """
-    try:
-        from weasyprint import HTML
-    except ImportError:
-        logger.error("WeasyPrint non installé. PDF non généré.")
-        return None
-    except OSError as e:
-        logger.error(f"WeasyPrint: dépendance système manquante: {e}")
-        return None
-
-    try:
-        # Prepare template
-        templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
-        env = Environment(loader=FileSystemLoader(templates_dir))
-        template = env.get_template("report.html")
-
-        # Convert markdown to HTML
-        report_html = _markdown_to_html(report_markdown)
-
-        # Prepare figure data
-        figures = editor_report.figures_generated
-        figure_captions = []
-        for fig_path in figures:
-            fname = os.path.basename(fig_path)
-            caption = FIGURE_CAPTIONS.get(fname, fname)
-            figure_captions.append(caption)
-
-        # Prepare sources string
-        sources_list = set(a.source for a in articles)
-        sources_str = ", ".join(sorted(sources_list))
-
-        # Prepare verifications
-        verifications = [
-            {
-                "claim": v.claim,
-                "verified": v.verified,
-                "confidence": v.confidence,
-                "correction": v.correction,
-            }
-            for v in editor_report.verifications
-        ]
-
-        # Render HTML
-        html_content = template.render(
-            title="Rapport de Recherche Bibliographique Scientifique",
-            keywords=keywords,
-            date_from=date_from,
-            date_to=date_to,
-            article_count=len(articles),
-            sources=sources_str,
-            report_date=datetime.now().strftime("%d/%m/%Y %H:%M"),
-            confidence_score=editor_report.confidence_score,
-            report_html=report_html,
-            figures=[os.path.abspath(f) for f in figures],
-            figure_captions=figure_captions,
-            verifications=verifications,
-        )
-
-        # Generate PDF
-        if output_path is None:
-            os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-            output_path = os.path.join(config.OUTPUT_DIR, "rapport_bibliographique.pdf")
-
-        HTML(string=html_content).write_pdf(output_path)
-        logger.info(f"PDF généré: {output_path}")
-        return output_path
-
-    except Exception as e:
-        logger.error(f"Erreur génération PDF: {e}")
-        return None
+    """Backward-compatible wrapper — now generates HTML."""
+    html = generate_html_report(
+        report_markdown, articles, editor_report, keywords, date_from, date_to
+    )
+    path = os.path.join(config.OUTPUT_DIR, "rapport_bibliographique.html")
+    return path if os.path.exists(path) else None

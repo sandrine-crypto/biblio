@@ -24,114 +24,259 @@ plt.rcParams.update({"figure.dpi": 300, "savefig.dpi": 300, "figure.figsize": (1
 
 # ─── Vérification via Perplexity ────────────────────────────────────────────
 
-def _extract_claims(report: str, n: int = 10) -> list[str]:
-    """Extrait les N principales affirmations factuelles du rapport."""
+def _extract_claims_with_sources(report: str, articles: list[Article]) -> list[dict]:
+    """Extrait toutes les affirmations factuelles avec leurs articles cités.
+
+    Retourne une liste de dicts: {"claim": str, "cited_dois": [str], "cited_articles": [Article]}
+    """
+    # Build DOI -> Article lookup
+    doi_to_article = {}
+    for a in articles:
+        if a.doi:
+            doi_to_article[a.doi.lower()] = a
+        if a.url:
+            doi_to_article[a.url.lower()] = a
+
     sentences = re.split(r'(?<=[.!?])\s+', report)
     claims = []
+
     for s in sentences:
         s = s.strip()
-        if len(s) > 50 and any(kw in s.lower() for kw in [
+        if len(s) < 40:
+            continue
+
+        # Check if this sentence contains factual content
+        has_factual = any(kw in s.lower() for kw in [
             "montr", "démontr", "révèl", "suggèr", "confirm", "identifi",
             "observ", "associé", "corrél", "augment", "diminu", "significati",
             "show", "demonstrat", "reveal", "suggest", "confirm", "identify",
             "observ", "associat", "correlat", "increas", "decreas", "significant",
-        ]):
-            claims.append(s)
-        if len(claims) >= n:
-            break
+            "%", "p =", "p<", "p >", "odds ratio", "hazard ratio", "ci ",
+            "n =", "n=", "cohort", "trial", "patient",
+        ])
 
-    # If not enough claims found with keywords, take longest sentences
-    if len(claims) < n:
-        remaining = [s.strip() for s in sentences if s.strip() not in claims and len(s.strip()) > 40]
-        remaining.sort(key=len, reverse=True)
-        claims.extend(remaining[:n - len(claims)])
+        if not has_factual:
+            continue
 
-    return claims[:n]
+        # Extract cited DOIs from this sentence and surrounding context
+        cited_dois = []
+        cited_articles = []
+
+        # Match DOI patterns: [DOI: xxx], (DOI: xxx), doi.org/xxx, 10.xxxx/xxx
+        doi_patterns = re.findall(
+            r'(?:DOI:\s*|doi\.org/)?(10\.\d{4,9}/[^\s\]\)]+)', s, re.IGNORECASE
+        )
+        for doi in doi_patterns:
+            doi_clean = doi.rstrip(".,;)]").lower()
+            if doi_clean in doi_to_article:
+                cited_dois.append(doi_clean)
+                cited_articles.append(doi_to_article[doi_clean])
+
+        # Match markdown links [text](url) where url contains doi.org
+        link_matches = re.findall(r'\[([^\]]+)\]\((https?://doi\.org/[^\)]+)\)', s)
+        for _, url in link_matches:
+            url_clean = url.lower().rstrip(".,;)")
+            doi_from_url = url_clean.replace("https://doi.org/", "").replace("http://doi.org/", "")
+            if doi_from_url in doi_to_article:
+                if doi_from_url not in cited_dois:
+                    cited_dois.append(doi_from_url)
+                    cited_articles.append(doi_to_article[doi_from_url])
+
+        # Also match author citations like [Author et al., Year]
+        author_cites = re.findall(r'\[([A-Z][a-z]+ et al\.,?\s*\d{4})\]', s)
+        for cite in author_cites:
+            year_match = re.search(r'(\d{4})', cite)
+            name_match = re.search(r'([A-Z][a-z]+)', cite)
+            if year_match and name_match:
+                year = int(year_match.group(1))
+                name = name_match.group(1).lower()
+                for a in articles:
+                    if a.year == year and a.authors and name in a.authors[0].lower():
+                        if a not in cited_articles:
+                            cited_articles.append(a)
+                            if a.doi:
+                                cited_dois.append(a.doi.lower())
+                        break
+
+        if cited_articles:
+            claims.append({
+                "claim": s,
+                "cited_dois": cited_dois,
+                "cited_articles": cited_articles,
+            })
+
+    return claims
 
 
-def verify_claims(report: str, progress_callback=None) -> tuple[list[VerificationResult], float]:
-    """Vérifie les claims du rapport via l'API Perplexity."""
+def _perplexity_verify_claim(
+    claim: str,
+    cited_articles: list[Article],
+    headers: dict,
+) -> dict:
+    """Vérifie une claim en demandant à Perplexity de la confronter UNIQUEMENT
+    aux abstracts/textes des articles cités."""
+
+    # Build context from cited articles only
+    context_parts = []
+    for a in cited_articles:
+        parts = [f"Titre: {a.title}"]
+        if a.doi:
+            parts.append(f"DOI: {a.doi}")
+        if a.authors:
+            parts.append(f"Auteurs: {', '.join(a.authors[:5])}")
+        if a.journal:
+            parts.append(f"Journal: {a.journal} ({a.year})")
+        if a.abstract:
+            parts.append(f"Abstract: {a.abstract}")
+        context_parts.append("\n".join(parts))
+
+    articles_context = "\n\n---\n\n".join(context_parts)
+
+    payload = {
+        "model": config.PERPLEXITY_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Tu es un vérificateur scientifique d'une rigueur absolue. "
+                    "Tu vérifies si une affirmation est EXACTEMENT soutenue par le texte "
+                    "des articles scientifiques fournis. Tu ne dois utiliser AUCUNE autre "
+                    "source que les articles fournis ci-dessous. "
+                    "Vérifie chaque donnée chiffrée (pourcentage, p-value, effectif, etc.) "
+                    "avec une précision totale.\n\n"
+                    "Réponds UNIQUEMENT en JSON valide avec ces champs:\n"
+                    '- "verified": true si l\'affirmation est exactement soutenue par les articles, false sinon\n'
+                    '- "confidence": 1.0 si vérification certaine, 0.0 si impossible à vérifier\n'
+                    '- "correction": null si vérifié, sinon la version corrigée exacte de l\'affirmation\n'
+                    '- "source": le DOI ou titre de l\'article qui soutient (ou contredit) l\'affirmation\n'
+                    '- "detail": explication brève de la vérification\n\n'
+                    "ARTICLES DE RÉFÉRENCE (seules sources autorisées) :\n\n"
+                    f"{articles_context}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Vérifie cette affirmation UNIQUEMENT par rapport aux articles fournis :\n\n{claim}",
+            },
+        ],
+        "max_tokens": 1024,
+    }
+
+    response = req.post(config.PERPLEXITY_API_URL, json=payload, headers=headers, timeout=60)
+    response.raise_for_status()
+
+    content = response.json()["choices"][0]["message"]["content"]
+
+    # Parse JSON from response
+    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
+    if json_match:
+        return json.loads(json_match.group())
+    return json.loads(content)
+
+
+def verify_claims(
+    report: str,
+    articles: list[Article],
+    progress_callback=None,
+    max_iterations: int = 3,
+) -> tuple[list[VerificationResult], float, str]:
+    """Vérifie les claims du rapport via Perplexity contre les articles cités.
+
+    Itère jusqu'à 100% de confiance ou max_iterations.
+
+    Returns:
+        (verifications, confidence_score, corrected_report)
+    """
     results = []
+    corrected_report = report
 
     if not config.PERPLEXITY_API_KEY:
         msg = "⚠️ PERPLEXITY_API_KEY non configurée. Vérification factuelle ignorée."
         logger.warning(msg)
         if progress_callback:
             progress_callback(msg)
-        return results, 0.0
+        return results, 0.0, report
 
     def log_progress(msg: str):
         logger.info(msg)
         if progress_callback:
             progress_callback(msg)
 
-    claims = _extract_claims(report)
-    log_progress(f"🔍 Vérification de {len(claims)} affirmations via Perplexity...")
-
     headers = {
         "Authorization": f"Bearer {config.PERPLEXITY_API_KEY}",
         "Content-Type": "application/json",
     }
 
-    for i, claim in enumerate(claims, 1):
-        log_progress(f"  Vérification {i}/{len(claims)}...")
-        try:
-            payload = {
-                "model": config.PERPLEXITY_MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Tu es un vérificateur scientifique. Vérifie la factualité de "
-                            "l'affirmation suivante. Réponds en JSON avec les champs: "
-                            '"verified" (bool), "confidence" (0-1), "correction" (string ou null), '
-                            '"source" (string ou null). Sois concis.'
-                        ),
-                    },
-                    {"role": "user", "content": f"Vérifie cette affirmation scientifique: {claim}"},
-                ],
-                "max_tokens": 512,
-            }
+    for iteration in range(1, max_iterations + 1):
+        log_progress(f"🔍 Itération {iteration}/{max_iterations} — Extraction des affirmations...")
 
-            response = req.post(config.PERPLEXITY_API_URL, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
+        claims = _extract_claims_with_sources(corrected_report, articles)
+        if not claims:
+            log_progress("ℹ️ Aucune affirmation avec source identifiable trouvée.")
+            break
 
-            content = response.json()["choices"][0]["message"]["content"]
+        log_progress(f"🔍 Vérification de {len(claims)} affirmations contre les articles cités...")
 
-            # Try to parse JSON from response
+        results = []
+        corrections_applied = 0
+
+        for i, claim_data in enumerate(claims, 1):
+            claim = claim_data["claim"]
+            cited = claim_data["cited_articles"]
+
+            log_progress(f"  [{i}/{len(claims)}] Vérification contre {len(cited)} article(s)...")
+
             try:
-                json_match = re.search(r'\{[^}]+\}', content, re.DOTALL)
-                if json_match:
-                    verification = json.loads(json_match.group())
-                else:
-                    verification = json.loads(content)
+                verification = _perplexity_verify_claim(claim, cited, headers)
 
-                results.append(VerificationResult(
+                verified = verification.get("verified", True)
+                confidence = float(verification.get("confidence", 0.5))
+                correction = verification.get("correction")
+                source = verification.get("source")
+
+                result = VerificationResult(
                     claim=claim,
-                    verified=verification.get("verified", True),
-                    correction=verification.get("correction"),
-                    source=verification.get("source"),
-                    confidence=float(verification.get("confidence", 0.5)),
-                ))
-            except (json.JSONDecodeError, ValueError):
+                    verified=verified,
+                    correction=correction if not verified else None,
+                    source=source,
+                    confidence=confidence,
+                )
+                results.append(result)
+
+                # Apply correction to report if needed
+                if not verified and correction and correction != claim:
+                    corrected_report = corrected_report.replace(claim, correction)
+                    corrections_applied += 1
+
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Erreur parsing vérification claim {i}: {e}")
                 results.append(VerificationResult(
-                    claim=claim,
-                    verified=True,
-                    confidence=0.5,
+                    claim=claim, verified=True, confidence=0.5,
+                    source=", ".join(a.doi or a.title for a in cited),
+                ))
+            except Exception as e:
+                logger.warning(f"Erreur vérification claim {i}: {e}")
+                results.append(VerificationResult(
+                    claim=claim, verified=True, confidence=0.5,
+                    source=", ".join(a.doi or a.title for a in cited),
                 ))
 
-        except Exception as e:
-            logger.warning(f"Erreur vérification claim {i}: {e}")
-            results.append(VerificationResult(claim=claim, verified=True, confidence=0.5))
+        # Calculate score
+        if results:
+            confidence_score = sum(v.confidence for v in results) / len(results) * 100
+        else:
+            confidence_score = 100.0
 
-    # Score de confiance global
-    if results:
-        confidence_score = sum(v.confidence for v in results) / len(results) * 100
-    else:
-        confidence_score = 0.0
+        log_progress(
+            f"📊 Itération {iteration}: confiance {confidence_score:.0f}%, "
+            f"{corrections_applied} correction(s) appliquée(s)"
+        )
 
-    log_progress(f"✅ Score de confiance global: {confidence_score:.0f}%")
-    return results, confidence_score
+        if confidence_score >= 100.0 or corrections_applied == 0:
+            break
+
+    log_progress(f"✅ Score de confiance final: {confidence_score:.0f}%")
+    return results, confidence_score, corrected_report
 
 
 # ─── Visualisations ─────────────────────────────────────────────────────────
@@ -415,7 +560,7 @@ def run_editing(
     articles: list[Article],
     report_markdown: str,
     progress_callback=None,
-) -> EditorReport:
+) -> tuple[EditorReport, str]:
     """Exécute la vérification, les visualisations et la génération du rapport final.
 
     Args:
@@ -424,7 +569,7 @@ def run_editing(
         progress_callback: Fonction optionnelle (message: str)
 
     Returns:
-        EditorReport avec les résultats
+        Tuple (EditorReport, corrected_report_markdown)
     """
     def log_progress(msg: str):
         logger.info(msg)
@@ -433,15 +578,17 @@ def run_editing(
 
     editor_report = EditorReport()
 
-    # 1. Vérification factuelle
-    log_progress("🔎 Phase de vérification factuelle...")
-    verifications, confidence = verify_claims(report_markdown, progress_callback)
+    # 1. Vérification factuelle + corrections
+    log_progress("🔎 Phase de vérification factuelle (vérification contre les articles cités)...")
+    verifications, confidence, corrected_report = verify_claims(
+        report_markdown, articles, progress_callback
+    )
     editor_report.verifications = verifications
     editor_report.confidence_score = confidence
 
     # 2. Visualisations
     log_progress("📊 Phase de génération des visualisations...")
-    figures = generate_visualizations(articles, report_markdown, progress_callback)
+    figures = generate_visualizations(articles, corrected_report, progress_callback)
     editor_report.figures_generated = figures
 
     # 3. Sauvegarde du rapport d'édition
@@ -450,5 +597,10 @@ def run_editing(
     with open(editor_path, "w", encoding="utf-8") as f:
         json.dump(editor_report.to_dict(), f, ensure_ascii=False, indent=2)
 
+    # Sauvegarde du rapport corrigé
+    report_path = os.path.join(config.OUTPUT_DIR, "report_corrected.md")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(corrected_report)
+
     log_progress("✅ Agent Éditeur terminé")
-    return editor_report
+    return editor_report, corrected_report

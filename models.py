@@ -15,6 +15,16 @@ class Article:
     keywords: list[str] = field(default_factory=list)
     citation_count: int = 0
     source: str = ""
+    pmid: str | None = None
+
+    @property
+    def url(self) -> str | None:
+        """Construit l'URL de l'article (DOI > PubMed > None)."""
+        if self.doi:
+            return f"https://doi.org/{self.doi}"
+        if self.pmid:
+            return f"https://pubmed.ncbi.nlm.nih.gov/{self.pmid}/"
+        return None
 
     def completeness_score(self) -> int:
         """Score de complétude pour la déduplication (plus élevé = plus complet)."""
@@ -36,7 +46,9 @@ class Article:
         return score
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["url"] = self.url
+        return d
 
 
 @dataclass
@@ -80,4 +92,8 @@ def articles_to_json(articles: list[Article]) -> str:
 
 def articles_from_json(data: str) -> list[Article]:
     items = json.loads(data)
-    return [Article(**item) for item in items]
+    result = []
+    for item in items:
+        item.pop("url", None)  # url is a computed property, not a field
+        result.append(Article(**item))
+    return result

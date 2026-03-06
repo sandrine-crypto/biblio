@@ -122,6 +122,9 @@ def _parse_pubmed_record(record: dict) -> Article:
                 doi = str(aid)
                 break
 
+    # PMID
+    pmid = str(medline.get("PMID", "")) or None
+
     # Keywords
     keywords_list = []
     mesh_headings = medline.get("MeshHeadingList", [])
@@ -144,4 +147,5 @@ def _parse_pubmed_record(record: dict) -> Article:
         keywords=keywords_list[:20],
         citation_count=0,
         source="pubmed",
+        pmid=pmid,
     )

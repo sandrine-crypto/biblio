@@ -43,6 +43,9 @@ def run_collection(
     Returns:
         Tuple (articles_dédupliqués, rapport_collecte)
     """
+    # Normalize multi-line keywords to single line (preserve quoted expressions)
+    keywords = " ".join(keywords.splitlines()).strip()
+
     if sources_enabled is None:
         sources_enabled = list(SOURCE_FUNCTIONS.keys())
 
