@@ -14,6 +14,7 @@ import requests as req
 
 import config
 from models import Article, VerificationResult, EditorReport
+from i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,7 @@ def _perplexity_verify_claim(
     claim: str,
     cited_articles: list[Article],
     headers: dict,
+    lang: str = "fr",
 ) -> dict:
     """Vérifie une claim en demandant à Perplexity de la confronter UNIQUEMENT
     aux abstracts/textes des articles cités."""
@@ -132,39 +134,62 @@ def _perplexity_verify_claim(
 
     articles_context = "\n\n---\n\n".join(context_parts)
 
+    if lang == "en":
+        system_content = (
+            "You are a scientific fact-checker. You verify whether a claim "
+            "is supported by the scientific articles provided below. "
+            "You must NOT use ANY other source.\n\n"
+            "RULES FOR THE confidence FIELD:\n"
+            "- If the claim is clearly supported by the text/abstract of an article -> confidence = 1.0\n"
+            "- If the claim is false but you can correct it -> confidence = 1.0 (because you are certain of the correction)\n"
+            "- If the claim is about a topic covered by the articles and is coherent -> confidence = 1.0\n"
+            "- Use confidence < 1.0 ONLY if the articles do not cover the topic at all\n\n"
+            "RULES FOR THE verified FIELD:\n"
+            "- true: the claim is correct and consistent with the articles\n"
+            "- false: the claim contains a factual error -> you MUST provide a correction\n\n"
+            "RULES FOR THE correction FIELD:\n"
+            "- If verified=true -> null\n"
+            "- If verified=false -> MANDATORY: rewrite the corrected sentence in full, "
+            "with exact data from the articles. The correction must be able to "
+            "directly replace the original claim in the report.\n\n"
+            "Reply ONLY with valid JSON:\n"
+            '{"verified": bool, "confidence": float, "correction": string|null, '
+            '"source": string, "detail": string}\n\n'
+            "REFERENCE ARTICLES:\n\n"
+            f"{articles_context}"
+        )
+        user_content = f"Verify this claim against the provided articles:\n\n{claim}"
+    else:
+        system_content = (
+            "Tu es un verificateur scientifique. Tu verifies si une affirmation "
+            "est soutenue par les articles scientifiques fournis ci-dessous. "
+            "Tu ne dois utiliser AUCUNE autre source.\n\n"
+            "REGLES POUR LE CHAMP confidence :\n"
+            "- Si l'affirmation est clairement soutenue par le texte/abstract d'un article -> confidence = 1.0\n"
+            "- Si l'affirmation est fausse mais que tu peux la corriger -> confidence = 1.0 (car tu es certain de la correction)\n"
+            "- Si l'affirmation porte sur un sujet couvert par les articles et est coherente -> confidence = 1.0\n"
+            "- Utilise confidence < 1.0 UNIQUEMENT si les articles ne couvrent pas du tout le sujet\n\n"
+            "REGLES POUR LE CHAMP verified :\n"
+            "- true : l'affirmation est correcte et coherente avec les articles\n"
+            "- false : l'affirmation contient une erreur factuelle -> tu DOIS fournir une correction\n\n"
+            "REGLES POUR LE CHAMP correction :\n"
+            "- Si verified=true -> null\n"
+            "- Si verified=false -> OBLIGATOIRE : reecris la phrase corrigee en entier, "
+            "avec les donnees exactes tirees des articles. La correction doit pouvoir "
+            "remplacer directement l'affirmation originale dans le rapport.\n\n"
+            "Reponds UNIQUEMENT en JSON valide :\n"
+            '{"verified": bool, "confidence": float, "correction": string|null, '
+            '"source": string, "detail": string}\n\n'
+            "ARTICLES DE REFERENCE :\n\n"
+            f"{articles_context}"
+        )
+        user_content = f"Verifie cette affirmation par rapport aux articles fournis :\n\n{claim}"
+
     payload = {
         "model": config.PERPLEXITY_MODEL,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Tu es un vérificateur scientifique. Tu vérifies si une affirmation "
-                    "est soutenue par les articles scientifiques fournis ci-dessous. "
-                    "Tu ne dois utiliser AUCUNE autre source.\n\n"
-                    "RÈGLES POUR LE CHAMP confidence :\n"
-                    "- Si l'affirmation est clairement soutenue par le texte/abstract d'un article → confidence = 1.0\n"
-                    "- Si l'affirmation est fausse mais que tu peux la corriger → confidence = 1.0 (car tu es certain de la correction)\n"
-                    "- Si l'affirmation porte sur un sujet couvert par les articles et est cohérente → confidence = 1.0\n"
-                    "- Utilise confidence < 1.0 UNIQUEMENT si les articles ne couvrent pas du tout le sujet\n\n"
-                    "RÈGLES POUR LE CHAMP verified :\n"
-                    "- true : l'affirmation est correcte et cohérente avec les articles\n"
-                    "- false : l'affirmation contient une erreur factuelle → tu DOIS fournir une correction\n\n"
-                    "RÈGLES POUR LE CHAMP correction :\n"
-                    "- Si verified=true → null\n"
-                    "- Si verified=false → OBLIGATOIRE : réécris la phrase corrigée en entier, "
-                    "avec les données exactes tirées des articles. La correction doit pouvoir "
-                    "remplacer directement l'affirmation originale dans le rapport.\n\n"
-                    "Réponds UNIQUEMENT en JSON valide :\n"
-                    '{"verified": bool, "confidence": float, "correction": string|null, '
-                    '"source": string, "detail": string}\n\n'
-                    "ARTICLES DE RÉFÉRENCE :\n\n"
-                    f"{articles_context}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Vérifie cette affirmation par rapport aux articles fournis :\n\n{claim}",
-            },
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
         ],
         "max_tokens": 1024,
     }
@@ -186,6 +211,7 @@ def verify_claims(
     articles: list[Article],
     progress_callback=None,
     max_iterations: int = 3,
+    lang: str = "fr",
 ) -> tuple[list[VerificationResult], float, str]:
     """Vérifie les claims du rapport via Perplexity contre les articles cités.
 
@@ -237,7 +263,7 @@ def verify_claims(
             # Retry up to 2 times on parse errors
             for attempt in range(2):
                 try:
-                    verification = _perplexity_verify_claim(claim, cited, headers)
+                    verification = _perplexity_verify_claim(claim, cited, headers, lang=lang)
                     break
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning(f"Tentative {attempt+1} - erreur parsing claim {i}: {e}")
@@ -303,8 +329,8 @@ def verify_claims(
 
 # ─── Visualisations ─────────────────────────────────────────────────────────
 
-def generate_visualizations(articles: list[Article], report: str, progress_callback=None) -> list[str]:
-    """Génère toutes les infographies."""
+def generate_visualizations(articles: list[Article], report: str, progress_callback=None, lang: str = "fr") -> list[str]:
+    """Generate all infographics."""
     os.makedirs(config.FIGURES_DIR, exist_ok=True)
     figures = []
 
@@ -313,60 +339,55 @@ def generate_visualizations(articles: list[Article], report: str, progress_callb
         if progress_callback:
             progress_callback(msg)
 
-    log_progress("📊 Génération des visualisations...")
+    log_progress("📊 Generating visualizations...")
 
-    # 1. Timeline publications par année
     try:
-        fig_path = _plot_timeline(articles)
+        fig_path = _plot_timeline(articles, lang)
         if fig_path:
             figures.append(fig_path)
-            log_progress("  ✅ Timeline des publications")
+            log_progress("  ✅ Publication timeline")
     except Exception as e:
-        logger.error(f"Erreur timeline: {e}")
+        logger.error(f"Error timeline: {e}")
 
-    # 2. Top 15 journaux
     try:
-        fig_path = _plot_top_journals(articles)
+        fig_path = _plot_top_journals(articles, lang)
         if fig_path:
             figures.append(fig_path)
-            log_progress("  ✅ Top 15 journaux")
+            log_progress("  ✅ Top 15 journals")
     except Exception as e:
-        logger.error(f"Erreur journaux: {e}")
+        logger.error(f"Error journals: {e}")
 
-    # 3. Word cloud
     try:
-        fig_path = _plot_wordcloud(articles)
+        fig_path = _plot_wordcloud(articles, lang)
         if fig_path:
             figures.append(fig_path)
             log_progress("  ✅ Word cloud")
     except Exception as e:
-        logger.error(f"Erreur wordcloud: {e}")
+        logger.error(f"Error wordcloud: {e}")
 
-    # 4. Réseau co-citations (si ≥ 20 articles)
     if len(articles) >= 20:
         try:
-            fig_path = _plot_cocitation_network(articles)
+            fig_path = _plot_cocitation_network(articles, lang)
             if fig_path:
                 figures.append(fig_path)
-                log_progress("  ✅ Réseau de co-citations")
+                log_progress("  ✅ Co-citation network")
         except Exception as e:
-            logger.error(f"Erreur réseau: {e}")
+            logger.error(f"Error network: {e}")
 
-    # 5. Heatmap sous-thématiques × années
     try:
-        fig_path = _plot_theme_heatmap(articles)
+        fig_path = _plot_theme_heatmap(articles, lang)
         if fig_path:
             figures.append(fig_path)
-            log_progress("  ✅ Heatmap thématiques × années")
+            log_progress("  ✅ Topic heatmap")
     except Exception as e:
-        logger.error(f"Erreur heatmap: {e}")
+        logger.error(f"Error heatmap: {e}")
 
-    log_progress(f"📊 {len(figures)} figures générées")
+    log_progress(f"📊 {len(figures)} figures generated")
     return figures
 
 
-def _plot_timeline(articles: list[Article]) -> str | None:
-    """Bar chart du volume de publications par année."""
+def _plot_timeline(articles: list[Article], lang: str = "fr") -> str | None:
+    """Bar chart of publication volume by year."""
     years = [a.year for a in articles if a.year]
     if not years:
         return None
@@ -377,9 +398,9 @@ def _plot_timeline(articles: list[Article]) -> str | None:
 
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.bar([str(y) for y in sorted_years], counts, color=sns.color_palette("deep")[0], edgecolor="white")
-    ax.set_xlabel("Année", fontsize=12)
-    ax.set_ylabel("Nombre de publications", fontsize=12)
-    ax.set_title("Volume de publications par année", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Year" if lang == "en" else "Annee", fontsize=12)
+    ax.set_ylabel("Number of publications" if lang == "en" else "Nombre de publications", fontsize=12)
+    ax.set_title(t("fig_timeline", lang), fontsize=14, fontweight="bold")
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
 
@@ -389,8 +410,8 @@ def _plot_timeline(articles: list[Article]) -> str | None:
     return path
 
 
-def _plot_top_journals(articles: list[Article]) -> str | None:
-    """Top 15 journaux par nombre de publications."""
+def _plot_top_journals(articles: list[Article], lang: str = "fr") -> str | None:
+    """Top 15 journals by publication count."""
     journals = [a.journal for a in articles if a.journal]
     if not journals:
         return None
@@ -404,8 +425,8 @@ def _plot_top_journals(articles: list[Article]) -> str | None:
     ax.barh(range(len(names)), counts, color=colors, edgecolor="white")
     ax.set_yticks(range(len(names)))
     ax.set_yticklabels(names, fontsize=10)
-    ax.set_xlabel("Nombre de publications", fontsize=12)
-    ax.set_title("Top 15 journaux par nombre de publications", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Number of publications" if lang == "en" else "Nombre de publications", fontsize=12)
+    ax.set_title(t("fig_top_journals", lang), fontsize=14, fontweight="bold")
     ax.invert_yaxis()
     plt.tight_layout()
 
@@ -415,8 +436,8 @@ def _plot_top_journals(articles: list[Article]) -> str | None:
     return path
 
 
-def _plot_wordcloud(articles: list[Article]) -> str | None:
-    """Word cloud des abstracts."""
+def _plot_wordcloud(articles: list[Article], lang: str = "fr") -> str | None:
+    """Word cloud of abstracts."""
     from wordcloud import WordCloud
 
     texts = [a.abstract for a in articles if a.abstract]
@@ -457,7 +478,7 @@ def _plot_wordcloud(articles: list[Article]) -> str | None:
     fig, ax = plt.subplots(figsize=(14, 7))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
-    ax.set_title("Nuage de mots des abstracts", fontsize=14, fontweight="bold", pad=20)
+    ax.set_title(t("fig_wordcloud", lang), fontsize=14, fontweight="bold", pad=20)
     plt.tight_layout()
 
     path = os.path.join(config.FIGURES_DIR, "wordcloud.png")
@@ -466,8 +487,8 @@ def _plot_wordcloud(articles: list[Article]) -> str | None:
     return path
 
 
-def _plot_cocitation_network(articles: list[Article]) -> str | None:
-    """Réseau de co-citations basé sur les mots-clés partagés."""
+def _plot_cocitation_network(articles: list[Article], lang: str = "fr") -> str | None:
+    """Co-citation network based on shared keywords."""
     import networkx as nx
 
     # Build network based on shared keywords
@@ -508,7 +529,7 @@ def _plot_cocitation_network(articles: list[Article]) -> str | None:
     nx.draw_networkx_edges(G, pos, width=[w * 0.5 for w in edge_weights], alpha=0.3, ax=ax)
     nx.draw_networkx_labels(G, pos, labels, font_size=6, ax=ax)
 
-    ax.set_title("Réseau de co-citations (mots-clés partagés)", fontsize=14, fontweight="bold")
+    ax.set_title(t("fig_cocitation", lang), fontsize=14, fontweight="bold")
     ax.axis("off")
     plt.tight_layout()
 
@@ -518,8 +539,8 @@ def _plot_cocitation_network(articles: list[Article]) -> str | None:
     return path
 
 
-def _plot_theme_heatmap(articles: list[Article]) -> str | None:
-    """Heatmap des sous-thématiques × années."""
+def _plot_theme_heatmap(articles: list[Article], lang: str = "fr") -> str | None:
+    """Heatmap of sub-topics by year."""
     import numpy as np
 
     # Collect keyword-year pairs
@@ -564,9 +585,9 @@ def _plot_theme_heatmap(articles: list[Article]) -> str | None:
         linewidths=0.5,
         ax=ax,
     )
-    ax.set_title("Heatmap: thématiques × années", fontsize=14, fontweight="bold")
-    ax.set_xlabel("Année", fontsize=12)
-    ax.set_ylabel("Thématique", fontsize=12)
+    ax.set_title(t("fig_heatmap", lang), fontsize=14, fontweight="bold")
+    ax.set_xlabel("Year" if lang == "en" else "Annee", fontsize=12)
+    ax.set_ylabel("Topic" if lang == "en" else "Thematique", fontsize=12)
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
 
@@ -582,13 +603,15 @@ def run_editing(
     articles: list[Article],
     report_markdown: str,
     progress_callback=None,
+    lang: str = "fr",
 ) -> tuple[EditorReport, str]:
-    """Exécute la vérification, les visualisations et la génération du rapport final.
+    """Run verification, visualizations, and final report generation.
 
     Args:
-        articles: Articles du corpus
-        report_markdown: Rapport markdown de l'Agent 2
-        progress_callback: Fonction optionnelle (message: str)
+        articles: Corpus articles
+        report_markdown: Markdown report from Agent 2
+        progress_callback: Optional function (message: str)
+        lang: Output language ('fr' or 'en')
 
     Returns:
         Tuple (EditorReport, corrected_report_markdown)
@@ -603,14 +626,14 @@ def run_editing(
     # 1. Vérification factuelle + corrections
     log_progress("🔎 Phase de vérification factuelle (vérification contre les articles cités)...")
     verifications, confidence, corrected_report = verify_claims(
-        report_markdown, articles, progress_callback
+        report_markdown, articles, progress_callback, lang=lang,
     )
     editor_report.verifications = verifications
     editor_report.confidence_score = confidence
 
     # 2. Visualisations
     log_progress("📊 Phase de génération des visualisations...")
-    figures = generate_visualizations(articles, corrected_report, progress_callback)
+    figures = generate_visualizations(articles, corrected_report, progress_callback, lang=lang)
     editor_report.figures_generated = figures
 
     # 3. Sauvegarde du rapport d'édition

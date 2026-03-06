@@ -1,4 +1,4 @@
-"""Application Streamlit de Recherche Bibliographique Scientifique Automatisée."""
+"""Application Streamlit de Recherche Bibliographique Scientifique Automatisee."""
 
 import logging
 import os
@@ -16,58 +16,73 @@ from agents.agent2_analyzer import run_analysis
 from agents.agent3_editor import run_editing
 from utils.bibtex_export import generate_bibtex
 from utils.pdf_report import generate_html_report
+from i18n import t
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# ─── Configuration page ─────────────────────────────────────────────────────
+# ---- Configuration page -------------------------------------------------------
 
 st.set_page_config(
-    page_title="Recherche Bibliographique Scientifique",
+    page_title="Scientific Literature Search",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
-def main():
-    st.title("📚 Recherche Bibliographique Scientifique")
-    st.markdown(
-        "Pipeline multi-agents automatisé : **Collecte → Analyse → Édition**"
-    )
+def _get_lang() -> str:
+    return st.session_state.get("lang", "fr")
 
-    # ─── Sidebar : paramètres ────────────────────────────────────────────
+
+def main():
+    lang = _get_lang()
+
+    st.title(f"📚 {t('main_title', lang)}")
+    st.markdown(t("main_subtitle", lang))
+
+    # ---- Sidebar : parameters ------------------------------------------------
     with st.sidebar:
-        st.header("⚙️ Paramètres de recherche")
+        # Language selector at top
+        lang_choice = st.selectbox(
+            "🌐 Langue / Language",
+            options=["Francais", "English"],
+            index=0 if lang == "fr" else 1,
+            key="lang_select",
+        )
+        new_lang = "fr" if lang_choice == "Francais" else "en"
+        if new_lang != lang:
+            st.session_state["lang"] = new_lang
+            st.rerun()
+        lang = new_lang
+
+        st.header(f"⚙️ {t('sidebar_header', lang)}")
 
         keywords = st.text_area(
-            "Mots-clés de recherche",
-            placeholder='ex: "gene therapy" CRISPR cancer "immune checkpoint"',
-            help='Entrez autant de mots-clés que nécessaire. '
-                 'Utilisez des guillemets pour les expressions exactes : "gene therapy". '
-                 'Séparez les mots-clés par des espaces ou des retours à la ligne.',
+            t("keywords_label", lang),
+            placeholder=t("keywords_placeholder", lang),
+            help=t("keywords_help", lang),
             height=80,
         )
 
         col1, col2 = st.columns(2)
         with col1:
-            date_from = st.text_input("Date de début", value="2020/01/01", help="Format: YYYY/MM/DD")
+            date_from = st.text_input(t("date_from", lang), value="2020/01/01", help="Format: YYYY/MM/DD")
         with col2:
-            date_to = st.text_input("Date de fin", value="2025/12/31", help="Format: YYYY/MM/DD")
+            date_to = st.text_input(t("date_to", lang), value="2025/12/31", help="Format: YYYY/MM/DD")
 
-        st.subheader("📡 Sources")
+        st.subheader(f"📡 {t('sources_header', lang)}")
         src_pubmed = st.checkbox("PubMed", value=True)
         src_semantic = st.checkbox("Semantic Scholar", value=True)
         src_europe = st.checkbox("Europe PMC", value=True)
-        src_scholar = st.checkbox("Google Scholar", value=False, help="⚠️ Peut être bloqué")
+        src_scholar = st.checkbox("Google Scholar", value=False, help=f"⚠️ {t('google_scholar_warning', lang)}")
 
-        max_results = st.slider("Résultats max par source", 10, 100, 50, step=10)
+        max_results = st.slider(t("max_results_label", lang), 10, 100, 50, step=10)
 
-        st.subheader("🔑 Configuration API")
+        st.subheader(f"🔑 {t('api_config_header', lang)}")
 
-        # Lire les clés : st.secrets > env var > saisie sidebar
+        # Read keys: st.secrets > env var > sidebar input
         def _resolve_key(secret_name: str) -> str:
-            """Résout une clé API depuis st.secrets ou os.environ."""
             try:
                 if secret_name in st.secrets:
                     return str(st.secrets[secret_name])
@@ -79,13 +94,12 @@ def main():
         stored_perplexity = _resolve_key("PERPLEXITY_API_KEY")
         stored_ncbi_key = _resolve_key("NCBI_API_KEY")
 
-        # Champs de saisie (uniquement si la clé n'est pas déjà dans secrets/env)
         if not stored_anthropic:
             anthropic_key_input = st.text_input(
-                "Clé API Anthropic",
+                t("anthropic_key_label", lang),
                 type="password",
                 key="anthropic_key",
-                help="Requis pour l'analyse LLM (Claude).",
+                help=t("anthropic_key_help", lang),
                 placeholder="sk-ant-...",
             )
         else:
@@ -93,10 +107,10 @@ def main():
 
         if not stored_perplexity:
             perplexity_key_input = st.text_input(
-                "Clé API Perplexity (optionnel)",
+                t("perplexity_key_label", lang),
                 type="password",
                 key="perplexity_key",
-                help="Pour la vérification factuelle.",
+                help=t("perplexity_key_help", lang),
                 placeholder="pplx-...",
             )
         else:
@@ -104,57 +118,51 @@ def main():
 
         if not stored_ncbi_key:
             ncbi_key_input = st.text_input(
-                "Clé API NCBI (optionnel)",
+                t("ncbi_key_label", lang),
                 type="password",
                 key="ncbi_key",
-                help="Augmente le rate limit PubMed (10 req/s au lieu de 3).",
+                help=t("ncbi_key_help", lang),
             )
         else:
             ncbi_key_input = ""
 
-        # Clés effectives : secrets/env > saisie sidebar
         effective_anthropic_key = stored_anthropic or anthropic_key_input
         effective_perplexity_key = stored_perplexity or perplexity_key_input
         effective_ncbi_key = stored_ncbi_key or ncbi_key_input
 
         api_status = []
         if effective_anthropic_key:
-            api_status.append("✅ Anthropic (Claude)")
+            api_status.append(f"✅ {t('api_anthropic_ok', lang)}")
         else:
-            api_status.append("❌ Anthropic — saisissez la clé ci-dessus ou ajoutez `ANTHROPIC_API_KEY` dans Settings → Secrets")
+            api_status.append(f"❌ {t('api_anthropic_missing', lang)}")
 
         if effective_perplexity_key:
             api_status.append("✅ Perplexity")
         else:
-            api_status.append("⚠️ Perplexity (optionnel)")
+            api_status.append(f"⚠️ {t('api_perplexity_optional', lang)}")
 
         if effective_ncbi_key:
             api_status.append("✅ NCBI API Key")
 
-        st.markdown("**Statut des APIs :**\n" + "\n".join(f"- {s}" for s in api_status))
+        st.markdown(f"**{t('api_status_title', lang)}**\n" + "\n".join(f"- {s}" for s in api_status))
 
         st.divider()
-        run_button = st.button("🚀 Lancer la recherche", type="primary", use_container_width=True)
+        run_button = st.button(f"🚀 {t('run_button', lang)}", type="primary", use_container_width=True)
 
-    # ─── Main area ───────────────────────────────────────────────────────
+    # ---- Main area -----------------------------------------------------------
 
     if run_button:
         if not keywords.strip():
-            st.error("Veuillez entrer des mots-clés de recherche.")
+            st.error(t("error_no_keywords", lang))
             return
 
-        # Override config with effective keys (sidebar > secrets > env)
         config.ANTHROPIC_API_KEY = effective_anthropic_key
         config.PERPLEXITY_API_KEY = effective_perplexity_key
         config.NCBI_API_KEY = effective_ncbi_key
 
         if not effective_anthropic_key:
-            st.warning(
-                "⚠️ Clé API Anthropic non configurée. L'analyse LLM sera en mode dégradé. "
-                "Ajoutez la clé dans la sidebar ou dans Settings → Secrets (ANTHROPIC_API_KEY)."
-            )
+            st.warning(f"⚠️ {t('warning_no_anthropic', lang)}")
 
-        # Build sources list
         sources_enabled = []
         if src_pubmed:
             sources_enabled.append("pubmed")
@@ -166,11 +174,11 @@ def main():
             sources_enabled.append("google_scholar")
 
         if not sources_enabled:
-            st.error("Veuillez sélectionner au moins une source.")
+            st.error(t("error_no_sources", lang))
             return
 
-        # ─── Agent 1 : Collecte ──────────────────────────────────────────
-        with st.status("🔍 Agent 1 — Documentaliste (Collecte & Déduplication)", expanded=True) as status1:
+        # ---- Agent 1 : Collection --------------------------------------------
+        with st.status(f"🔍 {t('agent1_status', lang)}", expanded=True) as status1:
             log_area_1 = st.empty()
             logs_1 = []
 
@@ -188,22 +196,21 @@ def main():
             )
 
             status1.update(
-                label=f"✅ Agent 1 terminé — {collection_report.final_count} articles uniques",
+                label=f"✅ {t('agent1_done', lang, count=collection_report.final_count)}",
                 state="complete",
             )
 
         if not articles:
-            st.warning("Aucun article trouvé. Essayez d'élargir vos critères de recherche.")
+            st.warning(t("no_articles_found", lang))
             return
 
-        # Store articles in session state
         st.session_state["articles"] = articles
         st.session_state["keywords"] = keywords
         st.session_state["date_from"] = date_from
         st.session_state["date_to"] = date_to
 
-        # ─── Agent 2 : Analyse ───────────────────────────────────────────
-        with st.status("📝 Agent 2 — Chercheur scientifique (Analyse & Synthèse)", expanded=True) as status2:
+        # ---- Agent 2 : Analysis ----------------------------------------------
+        with st.status(f"📝 {t('agent2_status', lang)}", expanded=True) as status2:
             log_area_2 = st.empty()
             logs_2 = []
 
@@ -214,14 +221,15 @@ def main():
             report_markdown, cited_metadata = run_analysis(
                 articles=articles,
                 progress_callback=progress_2,
+                lang=lang,
             )
 
-            status2.update(label="✅ Agent 2 terminé — Rapport généré", state="complete")
+            status2.update(label=f"✅ {t('agent2_done', lang)}", state="complete")
 
         st.session_state["report_markdown"] = report_markdown
 
-        # ─── Agent 3 : Édition ───────────────────────────────────────────
-        with st.status("🎨 Agent 3 — Éditeur & Visualisation", expanded=True) as status3:
+        # ---- Agent 3 : Editing -----------------------------------------------
+        with st.status(f"🎨 {t('agent3_status', lang)}", expanded=True) as status3:
             log_area_3 = st.empty()
             logs_3 = []
 
@@ -233,18 +241,18 @@ def main():
                 articles=articles,
                 report_markdown=report_markdown,
                 progress_callback=progress_3,
+                lang=lang,
             )
 
-            # Use corrected report from now on
             report_markdown = corrected_report
 
-            status3.update(label="✅ Agent 3 terminé", state="complete")
+            status3.update(label=f"✅ {t('agent3_done', lang)}", state="complete")
 
         st.session_state["editor_report"] = editor_report
         st.session_state["report_markdown"] = report_markdown
 
-        # ─── Exports ─────────────────────────────────────────────────────
-        with st.status("📦 Génération des exports...", expanded=False) as status_export:
+        # ---- Exports ---------------------------------------------------------
+        with st.status(f"📦 {t('exports_status', lang)}", expanded=False) as status_export:
             bibtex_content = generate_bibtex(articles)
 
             html_report = generate_html_report(
@@ -254,22 +262,24 @@ def main():
                 keywords=keywords,
                 date_from=date_from,
                 date_to=date_to,
+                lang=lang,
             )
 
-            status_export.update(label="✅ Exports générés", state="complete")
+            status_export.update(label=f"✅ {t('exports_done', lang)}", state="complete")
 
         st.session_state["bibtex_content"] = bibtex_content
         st.session_state["html_report"] = html_report
 
-        st.success("🎉 Pipeline terminé avec succès !")
+        st.success(f"🎉 {t('pipeline_done', lang)}")
 
-    # ─── Display results ─────────────────────────────────────────────────
+    # ---- Display results -----------------------------------------------------
     if "articles" in st.session_state:
         _display_results()
 
 
 def _display_results():
-    """Affiche les résultats dans des onglets."""
+    """Display results in tabs."""
+    lang = _get_lang()
     articles = st.session_state["articles"]
     report_markdown = st.session_state.get("report_markdown", "")
     editor_report = st.session_state.get("editor_report")
@@ -278,12 +288,11 @@ def _display_results():
 
     st.divider()
 
-    # Download buttons
     col_dl1, col_dl2, col_dl3 = st.columns(3)
 
     with col_dl1:
         st.download_button(
-            "📥 Télécharger JSON",
+            f"📥 {t('download_json', lang)}",
             data=articles_to_json(articles),
             file_name="corpus.json",
             mime="application/json",
@@ -292,7 +301,7 @@ def _display_results():
 
     with col_dl2:
         st.download_button(
-            "📥 Télécharger BibTeX",
+            f"📥 {t('download_bibtex', lang)}",
             data=bibtex_content,
             file_name="references.bib",
             mime="text/plain",
@@ -302,18 +311,20 @@ def _display_results():
     with col_dl3:
         if html_report:
             st.download_button(
-                "📥 Télécharger Rapport HTML",
+                f"📥 {t('download_html', lang)}",
                 data=html_report,
                 file_name="rapport_bibliographique.html",
                 mime="text/html",
                 use_container_width=True,
             )
         else:
-            st.button("📥 Rapport non disponible", disabled=True, use_container_width=True)
+            st.button(f"📥 {t('report_unavailable', lang)}", disabled=True, use_container_width=True)
 
-    # Tabs
     tab_report, tab_figures, tab_data, tab_verification = st.tabs([
-        "📝 Rapport", "📊 Figures", "📋 Données", "🔍 Vérification"
+        f"📝 {t('tab_report', lang)}",
+        f"📊 {t('tab_figures', lang)}",
+        f"📋 {t('tab_data', lang)}",
+        f"🔍 {t('tab_verification', lang)}",
     ])
 
     with tab_report:
@@ -326,22 +337,21 @@ def _display_results():
                     st.image(fig_path, use_container_width=True)
                     st.caption(os.path.basename(fig_path))
         else:
-            st.info("Aucune figure générée.")
+            st.info(t("no_figures", lang))
 
     with tab_data:
-        st.subheader(f"📋 {len(articles)} articles")
+        st.subheader(f"📋 {t('articles_count', lang, count=len(articles))}")
 
-        # Build table data
         table_data = []
         for a in articles:
             table_data.append({
-                "Titre": a.title[:80] + ("..." if len(a.title) > 80 else ""),
-                "Auteurs": ", ".join(a.authors[:3]) + ("..." if len(a.authors) > 3 else ""),
-                "Journal": a.journal or "—",
-                "Année": a.year or "—",
-                "Citations": a.citation_count,
-                "DOI": a.doi or "—",
-                "Source": a.source,
+                t("col_title", lang): a.title[:80] + ("..." if len(a.title) > 80 else ""),
+                t("col_authors", lang): ", ".join(a.authors[:3]) + ("..." if len(a.authors) > 3 else ""),
+                t("col_journal", lang): a.journal or "—",
+                t("col_year", lang): a.year or "—",
+                t("col_citations", lang): a.citation_count,
+                t("col_doi", lang): a.doi or "—",
+                t("col_source", lang): a.source,
             })
 
         st.dataframe(table_data, use_container_width=True, hide_index=True)
@@ -349,30 +359,27 @@ def _display_results():
     with tab_verification:
         if editor_report and editor_report.verifications:
             score = editor_report.confidence_score
-            st.metric("Score de confiance global", f"{score:.0f}%")
+            st.metric(t("confidence_metric", lang), f"{score:.0f}%")
 
             for v in editor_report.verifications:
                 if v.correction:
                     icon = "🔧"
-                    label = "Corrigé"
+                    label = t("status_corrected", lang)
                 elif v.verified:
                     icon = "✅"
-                    label = "Vérifié"
+                    label = t("status_verified", lang)
                 else:
                     icon = "⚠️"
-                    label = "Non vérifié"
+                    label = t("status_unverified", lang)
                 with st.expander(f"{icon} {v.claim[:100]}..."):
-                    st.write(f"**Statut:** {label}")
-                    st.write(f"**Confiance:** {v.confidence*100:.0f}%")
+                    st.write(f"**{t('label_status', lang)}** {label}")
+                    st.write(f"**{t('label_confidence', lang)}** {v.confidence*100:.0f}%")
                     if v.correction:
-                        st.success(f"**Correction appliquée :** {v.correction}")
+                        st.success(f"**{t('label_correction', lang)}** {v.correction}")
                     if v.source:
-                        st.info(f"**Source:** {v.source}")
+                        st.info(f"**{t('label_source', lang)}** {v.source}")
         else:
-            st.info(
-                "Vérification factuelle non disponible. "
-                "Configurez PERPLEXITY_API_KEY pour activer cette fonctionnalité."
-            )
+            st.info(t("verification_unavailable", lang))
 
 
 if __name__ == "__main__":

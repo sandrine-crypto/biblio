@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ lang | default('fr') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -294,28 +294,28 @@
     <div class="kpi-grid">
         <div class="kpi-card">
             <div class="kpi-value">{{ article_count }}</div>
-            <div class="kpi-label">Articles analysés</div>
+            <div class="kpi-label">{{ labels.articles_analyzed }}</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-value">{{ sources }}</div>
-            <div class="kpi-label">Sources</div>
+            <div class="kpi-label">{{ labels.sources }}</div>
         </div>
         {% if confidence_score > 0 %}
         <div class="kpi-card confidence {% if confidence_score < 50 %}very-low{% elif confidence_score < 70 %}low{% endif %}">
             <div class="kpi-value">{{ "%.0f"|format(confidence_score) }}%</div>
-            <div class="kpi-label">Confiance factuelle</div>
+            <div class="kpi-label">{{ labels.factual_confidence }}</div>
         </div>
         {% endif %}
         {% if year_range %}
         <div class="kpi-card">
             <div class="kpi-value">{{ year_range }}</div>
-            <div class="kpi-label">Période couverte</div>
+            <div class="kpi-label">{{ labels.period_covered }}</div>
         </div>
         {% endif %}
     </div>
 
     <div class="section">
-        <h2>Rapport de synthèse</h2>
+        <h2>{{ labels.synthesis_report }}</h2>
         <div class="report-content">
             {{ report_html | safe }}
         </div>
@@ -323,7 +323,7 @@
 
     {% if figures_b64 %}
     <div class="section">
-        <h2>Infographies</h2>
+        <h2>{{ labels.infographics }}</h2>
         <div class="figures-grid">
             {% for fig in figures_b64 %}
             <div class="figure-card">
@@ -337,17 +337,17 @@
 
     {% if articles_data %}
     <div class="section">
-        <h2>Corpus d'articles ({{ articles_data|length }})</h2>
+        <h2>{{ labels.article_corpus }} ({{ articles_data|length }})</h2>
         <div style="overflow-x:auto;">
         <table class="articles-table">
             <thead>
                 <tr>
                     <th>#</th>
-                    <th>Titre</th>
-                    <th>Auteurs</th>
-                    <th>Journal</th>
-                    <th>Année</th>
-                    <th>Citations</th>
+                    <th>{{ labels.col_title }}</th>
+                    <th>{{ labels.col_authors }}</th>
+                    <th>{{ labels.col_journal }}</th>
+                    <th>{{ labels.col_year }}</th>
+                    <th>{{ labels.col_citations }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -369,21 +369,21 @@
 
     {% if verifications %}
     <div class="section">
-        <h2>Vérification factuelle</h2>
+        <h2>{{ labels.factual_verification }}</h2>
         <div class="verification-list">
             {% for v in verifications %}
             <div class="verification-item {% if v.correction %}corrected{% elif not v.verified %}unverified{% endif %}">
                 <div class="verification-claim">{{ v.claim }}</div>
                 <div class="verification-meta">
-                    {% if v.correction %}🔧 Corrigé
-                    {% elif v.verified %}✅ Vérifié
-                    {% else %}⚠️ Non vérifié{% endif %}
-                    — Confiance : {{ "%.0f"|format(v.confidence * 100) }}%
-                    {% if v.source %} — Source : {{ v.source }}{% endif %}
+                    {% if v.correction %}🔧 {{ labels.status_corrected }}
+                    {% elif v.verified %}✅ {{ labels.status_verified }}
+                    {% else %}⚠️ {{ labels.status_unverified }}{% endif %}
+                    — {{ labels.label_confidence }} {{ "%.0f"|format(v.confidence * 100) }}%
+                    {% if v.source %} — {{ labels.label_source }} {{ v.source }}{% endif %}
                 </div>
                 {% if v.correction %}
                 <div class="verification-correction">
-                    <strong>Correction appliquée :</strong> {{ v.correction }}
+                    <strong>{{ labels.label_correction }}</strong> {{ v.correction }}
                 </div>
                 {% endif %}
             </div>
@@ -393,7 +393,7 @@
     {% endif %}
 
     <div class="footer">
-        Rapport généré automatiquement — Recherche Bibliographique Scientifique — {{ report_date }}
+        {{ labels.footer }} — {{ report_date }}
     </div>
 </div>
 

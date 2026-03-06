@@ -1,9 +1,8 @@
-"""Génération du rapport HTML infographique téléchargeable."""
+"""Generation of downloadable HTML infographic report."""
 
 import base64
 import logging
 import os
-import re
 from datetime import datetime
 
 from jinja2 import Environment, FileSystemLoader
@@ -11,20 +10,12 @@ import markdown as md
 
 import config
 from models import Article, EditorReport
+from i18n import t
 
 logger = logging.getLogger(__name__)
 
-FIGURE_CAPTIONS = {
-    "timeline.png": "Volume de publications par année",
-    "top_journals.png": "Top 15 journaux par nombre de publications",
-    "wordcloud.png": "Nuage de mots des abstracts",
-    "cocitation_network.png": "Réseau de co-citations (mots-clés partagés)",
-    "theme_heatmap.png": "Heatmap des sous-thématiques par année",
-}
-
 
 def _markdown_to_html(markdown_text: str) -> str:
-    """Convertit le Markdown en HTML via la bibliothèque markdown."""
     return md.markdown(
         markdown_text,
         extensions=["extra", "smarty", "sane_lists", "toc"],
@@ -33,7 +24,6 @@ def _markdown_to_html(markdown_text: str) -> str:
 
 
 def _encode_figure_b64(fig_path: str) -> str | None:
-    """Encode une image en base64 pour l'intégration HTML."""
     if not os.path.exists(fig_path):
         return None
     with open(fig_path, "rb") as f:
@@ -47,11 +37,12 @@ def generate_html_report(
     keywords: str,
     date_from: str,
     date_to: str,
+    lang: str = "fr",
 ) -> str:
-    """Génère le rapport HTML infographique standalone.
+    """Generate standalone HTML infographic report.
 
     Returns:
-        Contenu HTML complet (string) prêt à télécharger.
+        Complete HTML content (string) ready for download.
     """
     templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
     env = Environment(loader=FileSystemLoader(templates_dir))
@@ -59,24 +50,29 @@ def generate_html_report(
 
     report_html = _markdown_to_html(report_markdown)
 
-    # Figures en base64
+    # Figures as base64
+    figure_caption_map = {
+        "timeline.png": t("fig_timeline", lang),
+        "top_journals.png": t("fig_top_journals", lang),
+        "wordcloud.png": t("fig_wordcloud", lang),
+        "cocitation_network.png": t("fig_cocitation", lang),
+        "theme_heatmap.png": t("fig_heatmap", lang),
+    }
+
     figures_b64 = []
     for fig_path in editor_report.figures_generated:
         b64 = _encode_figure_b64(fig_path)
         if b64:
             fname = os.path.basename(fig_path)
-            caption = FIGURE_CAPTIONS.get(fname, fname)
+            caption = figure_caption_map.get(fname, fname)
             figures_b64.append({"data": b64, "caption": caption})
 
-    # Sources
     sources_list = set(a.source for a in articles)
     sources_str = ", ".join(sorted(sources_list))
 
-    # Période effective
     years = [a.year for a in articles if a.year]
     year_range = f"{min(years)}-{max(years)}" if years else ""
 
-    # Articles data pour le tableau
     articles_data = []
     for a in articles:
         articles_data.append({
@@ -88,7 +84,6 @@ def generate_html_report(
             "citations": a.citation_count,
         })
 
-    # Vérifications
     verifications = [
         {
             "claim": v.claim,
@@ -100,8 +95,32 @@ def generate_html_report(
         for v in editor_report.verifications
     ]
 
+    # Translated labels for the template
+    labels = {
+        "articles_analyzed": t("html_articles_analyzed", lang),
+        "sources": "Sources",
+        "factual_confidence": t("html_factual_confidence", lang),
+        "period_covered": t("html_period_covered", lang),
+        "synthesis_report": t("html_synthesis_report", lang),
+        "infographics": t("html_infographics", lang),
+        "article_corpus": t("html_article_corpus", lang),
+        "factual_verification": t("html_factual_verification", lang),
+        "footer": t("html_footer", lang),
+        "col_title": t("col_title", lang),
+        "col_authors": t("col_authors", lang),
+        "col_journal": t("col_journal", lang),
+        "col_year": t("col_year", lang),
+        "col_citations": t("col_citations", lang),
+        "status_corrected": t("status_corrected", lang),
+        "status_verified": t("status_verified", lang),
+        "status_unverified": t("status_unverified", lang),
+        "label_confidence": t("label_confidence", lang),
+        "label_source": t("label_source", lang),
+        "label_correction": t("label_correction", lang),
+    }
+
     html_content = template.render(
-        title="Rapport de Recherche Bibliographique Scientifique",
+        title=t("html_title", lang),
         keywords=keywords,
         date_from=date_from,
         date_to=date_to,
@@ -114,9 +133,10 @@ def generate_html_report(
         figures_b64=figures_b64,
         articles_data=articles_data,
         verifications=verifications,
+        labels=labels,
+        lang=lang,
     )
 
-    # Sauvegarde locale
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     output_path = os.path.join(config.OUTPUT_DIR, "rapport_bibliographique.html")
     with open(output_path, "w", encoding="utf-8") as f:
