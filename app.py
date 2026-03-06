@@ -352,12 +352,20 @@ def _display_results():
             st.metric("Score de confiance global", f"{score:.0f}%")
 
             for v in editor_report.verifications:
-                icon = "✅" if v.verified else "⚠️"
+                if v.correction:
+                    icon = "🔧"
+                    label = "Corrigé"
+                elif v.verified:
+                    icon = "✅"
+                    label = "Vérifié"
+                else:
+                    icon = "⚠️"
+                    label = "Non vérifié"
                 with st.expander(f"{icon} {v.claim[:100]}..."):
-                    st.write(f"**Vérifié:** {'Oui' if v.verified else 'Non'}")
+                    st.write(f"**Statut:** {label}")
                     st.write(f"**Confiance:** {v.confidence*100:.0f}%")
                     if v.correction:
-                        st.warning(f"**Correction:** {v.correction}")
+                        st.success(f"**Correction appliquée :** {v.correction}")
                     if v.source:
                         st.info(f"**Source:** {v.source}")
         else:

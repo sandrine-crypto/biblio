@@ -148,7 +148,12 @@ def _perplexity_verify_claim(
                     "- Utilise confidence < 1.0 UNIQUEMENT si les articles ne couvrent pas du tout le sujet\n\n"
                     "RÈGLES POUR LE CHAMP verified :\n"
                     "- true : l'affirmation est correcte et cohérente avec les articles\n"
-                    "- false : l'affirmation contient une erreur factuelle démontrée par les articles\n\n"
+                    "- false : l'affirmation contient une erreur factuelle → tu DOIS fournir une correction\n\n"
+                    "RÈGLES POUR LE CHAMP correction :\n"
+                    "- Si verified=true → null\n"
+                    "- Si verified=false → OBLIGATOIRE : réécris la phrase corrigée en entier, "
+                    "avec les données exactes tirées des articles. La correction doit pouvoir "
+                    "remplacer directement l'affirmation originale dans le rapport.\n\n"
                     "Réponds UNIQUEMENT en JSON valide :\n"
                     '{"verified": bool, "confidence": float, "correction": string|null, '
                     '"source": string, "detail": string}\n\n'
@@ -242,27 +247,34 @@ def verify_claims(
 
             if verification:
                 verified = verification.get("verified", True)
-                raw_conf = verification.get("confidence", 1.0)
-                confidence = float(raw_conf) if raw_conf is not None else 1.0
-                # Normalize: if verified=true, confidence should be 1.0
-                if verified:
-                    confidence = 1.0
                 correction = verification.get("correction")
                 source = verification.get("source")
 
+                # Apply correction to report if needed
+                applied_correction = False
+                if not verified and correction and correction != claim:
+                    corrected_report = corrected_report.replace(claim, correction)
+                    corrections_applied += 1
+                    applied_correction = True
+
+                # Confidence logic:
+                # - verified=true → 1.0 (info exacte)
+                # - verified=false + correction applied → 1.0 (info corrigée, donc maintenant exacte)
+                # - verified=false + no correction → use Perplexity's confidence
+                if verified or applied_correction:
+                    confidence = 1.0
+                else:
+                    raw_conf = verification.get("confidence", 1.0)
+                    confidence = float(raw_conf) if raw_conf is not None else 1.0
+
                 result = VerificationResult(
                     claim=claim,
-                    verified=verified,
-                    correction=correction if not verified else None,
+                    verified=verified or applied_correction,
+                    correction=correction if applied_correction else None,
                     source=source,
                     confidence=confidence,
                 )
                 results.append(result)
-
-                # Apply correction to report if needed
-                if not verified and correction and correction != claim:
-                    corrected_report = corrected_report.replace(claim, correction)
-                    corrections_applied += 1
             else:
                 # All retries failed — assume verified (don't penalize score)
                 source_str = ", ".join(a.doi or a.title for a in cited)

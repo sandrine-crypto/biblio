@@ -372,16 +372,18 @@
         <h2>Vérification factuelle</h2>
         <div class="verification-list">
             {% for v in verifications %}
-            <div class="verification-item {% if not v.verified %}{% if v.correction %}corrected{% else %}unverified{% endif %}{% endif %}">
+            <div class="verification-item {% if v.correction %}corrected{% elif not v.verified %}unverified{% endif %}">
                 <div class="verification-claim">{{ v.claim }}</div>
                 <div class="verification-meta">
-                    {% if v.verified %}✅ Vérifié{% else %}⚠️ Non vérifié{% endif %}
+                    {% if v.correction %}🔧 Corrigé
+                    {% elif v.verified %}✅ Vérifié
+                    {% else %}⚠️ Non vérifié{% endif %}
                     — Confiance : {{ "%.0f"|format(v.confidence * 100) }}%
                     {% if v.source %} — Source : {{ v.source }}{% endif %}
                 </div>
                 {% if v.correction %}
                 <div class="verification-correction">
-                    <strong>Correction :</strong> {{ v.correction }}
+                    <strong>Correction appliquée :</strong> {{ v.correction }}
                 </div>
                 {% endif %}
             </div>
