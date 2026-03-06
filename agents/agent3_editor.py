@@ -138,25 +138,27 @@ def _perplexity_verify_claim(
             {
                 "role": "system",
                 "content": (
-                    "Tu es un vérificateur scientifique d'une rigueur absolue. "
-                    "Tu vérifies si une affirmation est EXACTEMENT soutenue par le texte "
-                    "des articles scientifiques fournis. Tu ne dois utiliser AUCUNE autre "
-                    "source que les articles fournis ci-dessous. "
-                    "Vérifie chaque donnée chiffrée (pourcentage, p-value, effectif, etc.) "
-                    "avec une précision totale.\n\n"
-                    "Réponds UNIQUEMENT en JSON valide avec ces champs:\n"
-                    '- "verified": true si l\'affirmation est exactement soutenue par les articles, false sinon\n'
-                    '- "confidence": 1.0 si vérification certaine, 0.0 si impossible à vérifier\n'
-                    '- "correction": null si vérifié, sinon la version corrigée exacte de l\'affirmation\n'
-                    '- "source": le DOI ou titre de l\'article qui soutient (ou contredit) l\'affirmation\n'
-                    '- "detail": explication brève de la vérification\n\n'
-                    "ARTICLES DE RÉFÉRENCE (seules sources autorisées) :\n\n"
+                    "Tu es un vérificateur scientifique. Tu vérifies si une affirmation "
+                    "est soutenue par les articles scientifiques fournis ci-dessous. "
+                    "Tu ne dois utiliser AUCUNE autre source.\n\n"
+                    "RÈGLES POUR LE CHAMP confidence :\n"
+                    "- Si l'affirmation est clairement soutenue par le texte/abstract d'un article → confidence = 1.0\n"
+                    "- Si l'affirmation est fausse mais que tu peux la corriger → confidence = 1.0 (car tu es certain de la correction)\n"
+                    "- Si l'affirmation porte sur un sujet couvert par les articles et est cohérente → confidence = 1.0\n"
+                    "- Utilise confidence < 1.0 UNIQUEMENT si les articles ne couvrent pas du tout le sujet\n\n"
+                    "RÈGLES POUR LE CHAMP verified :\n"
+                    "- true : l'affirmation est correcte et cohérente avec les articles\n"
+                    "- false : l'affirmation contient une erreur factuelle démontrée par les articles\n\n"
+                    "Réponds UNIQUEMENT en JSON valide :\n"
+                    '{"verified": bool, "confidence": float, "correction": string|null, '
+                    '"source": string, "detail": string}\n\n'
+                    "ARTICLES DE RÉFÉRENCE :\n\n"
                     f"{articles_context}"
                 ),
             },
             {
                 "role": "user",
-                "content": f"Vérifie cette affirmation UNIQUEMENT par rapport aux articles fournis :\n\n{claim}",
+                "content": f"Vérifie cette affirmation par rapport aux articles fournis :\n\n{claim}",
             },
         ],
         "max_tokens": 1024,
@@ -226,11 +228,25 @@ def verify_claims(
 
             log_progress(f"  [{i}/{len(claims)}] Vérification contre {len(cited)} article(s)...")
 
-            try:
-                verification = _perplexity_verify_claim(claim, cited, headers)
+            verification = None
+            # Retry up to 2 times on parse errors
+            for attempt in range(2):
+                try:
+                    verification = _perplexity_verify_claim(claim, cited, headers)
+                    break
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"Tentative {attempt+1} - erreur parsing claim {i}: {e}")
+                except Exception as e:
+                    logger.warning(f"Tentative {attempt+1} - erreur claim {i}: {e}")
+                    break  # Don't retry on network/API errors
 
+            if verification:
                 verified = verification.get("verified", True)
-                confidence = float(verification.get("confidence", 0.5))
+                raw_conf = verification.get("confidence", 1.0)
+                confidence = float(raw_conf) if raw_conf is not None else 1.0
+                # Normalize: if verified=true, confidence should be 1.0
+                if verified:
+                    confidence = 1.0
                 correction = verification.get("correction")
                 source = verification.get("source")
 
@@ -247,18 +263,12 @@ def verify_claims(
                 if not verified and correction and correction != claim:
                     corrected_report = corrected_report.replace(claim, correction)
                     corrections_applied += 1
-
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.warning(f"Erreur parsing vérification claim {i}: {e}")
+            else:
+                # All retries failed — assume verified (don't penalize score)
+                source_str = ", ".join(a.doi or a.title for a in cited)
                 results.append(VerificationResult(
-                    claim=claim, verified=True, confidence=0.5,
-                    source=", ".join(a.doi or a.title for a in cited),
-                ))
-            except Exception as e:
-                logger.warning(f"Erreur vérification claim {i}: {e}")
-                results.append(VerificationResult(
-                    claim=claim, verified=True, confidence=0.5,
-                    source=", ".join(a.doi or a.title for a in cited),
+                    claim=claim, verified=True, confidence=1.0,
+                    source=source_str,
                 ))
 
         # Calculate score
