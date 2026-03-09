@@ -28,10 +28,17 @@ def search_pubmed(keywords: str, date_from: str, date_to: str, max_results: int 
     articles = []
 
     try:
-        query = f"{keywords} AND ({date_from}[PDAT] : {date_to}[PDAT])"
-        logger.info(f"PubMed search: {query}")
+        logger.info(f"PubMed search: {keywords} [{date_from} - {date_to}]")
 
-        handle = Entrez.esearch(db="pubmed", term=query, retmax=max_results, sort="relevance")
+        handle = Entrez.esearch(
+            db="pubmed",
+            term=keywords,
+            retmax=max_results,
+            sort="relevance",
+            datetype="pdat",
+            mindate=date_from,
+            maxdate=date_to,
+        )
         results = Entrez.read(handle)
         handle.close()
 
