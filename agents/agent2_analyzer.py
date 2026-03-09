@@ -1,13 +1,12 @@
-"""Agent 2 — Scientific Researcher: Analysis and synthesis via Anthropic API."""
+"""Agent 2 — Scientific Researcher: Analysis and synthesis via selectable LLM."""
 
 import json
 import logging
 import os
 
-import anthropic
-
 import config
 from models import Article
+from llm_client import call_llm, PROVIDER_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +225,7 @@ def run_analysis(
     articles: list[Article],
     progress_callback=None,
     lang: str = "fr",
+    llm_provider: str = "claude",
 ) -> tuple[str, list[dict]]:
     """Analyze the corpus and produce a scientific report.
 
@@ -233,12 +233,16 @@ def run_analysis(
         articles: Deduplicated article list
         progress_callback: Optional function (message: str)
         lang: Output language ('fr' or 'en')
+        llm_provider: LLM provider to use ('claude', 'mistral', or 'perplexity')
 
     Returns:
         Tuple (report_markdown, cited_article_metadata)
     """
-    if not config.ANTHROPIC_API_KEY:
-        msg = "⚠️ ANTHROPIC_API_KEY not configured." if lang == "en" else "⚠️ ANTHROPIC_API_KEY non configuree."
+    from llm_client import is_provider_available
+
+    if not is_provider_available(llm_provider):
+        provider_name = PROVIDER_LABELS.get(llm_provider, llm_provider)
+        msg = f"⚠️ API key not configured for {provider_name}."
         logger.warning(msg)
         if progress_callback:
             progress_callback(msg)
@@ -249,21 +253,21 @@ def run_analysis(
         if progress_callback:
             progress_callback(msg)
 
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-
     corpus_text = _format_corpus(articles)
     estimated_tokens = _estimate_tokens(corpus_text)
+    provider_name = PROVIDER_LABELS.get(llm_provider, llm_provider)
 
     log_progress(f"📝 Corpus: {len(articles)} articles, ~{estimated_tokens:,} tokens")
+    log_progress(f"🤖 LLM: {provider_name}")
 
     system_prompt = SYSTEM_PROMPTS.get(lang, SYSTEM_PROMPTS["fr"])
 
     if estimated_tokens <= config.MAX_TOKENS_SINGLE_CALL:
-        log_progress("📤 Sending full corpus to Claude...")
-        report = _single_pass_analysis(client, corpus_text, system_prompt, lang, log_progress)
+        log_progress(f"📤 Sending full corpus to {provider_name}...")
+        report = _single_pass_analysis(llm_provider, corpus_text, system_prompt, lang, log_progress)
     else:
         log_progress("📦 Corpus too large, activating Map-Reduce...")
-        report = _map_reduce_analysis(client, articles, system_prompt, lang, log_progress)
+        report = _map_reduce_analysis(llm_provider, articles, system_prompt, lang, log_progress)
 
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     report_path = os.path.join(config.OUTPUT_DIR, "report.md")
@@ -279,20 +283,12 @@ def run_analysis(
     return report, cited_metadata
 
 
-def _single_pass_analysis(client, corpus_text: str, system_prompt: str, lang: str, log_progress) -> str:
+def _single_pass_analysis(provider: str, corpus_text: str, system_prompt: str, lang: str, log_progress) -> str:
     prompt = ANALYSIS_PROMPTS.get(lang, ANALYSIS_PROMPTS["fr"]).format(corpus=corpus_text)
-
-    response = client.messages.create(
-        model=config.ANTHROPIC_MODEL,
-        max_tokens=8192,
-        system=system_prompt,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    return response.content[0].text
+    return call_llm(provider, system_prompt, prompt, max_tokens=8192)
 
 
-def _map_reduce_analysis(client, articles: list[Article], system_prompt: str, lang: str, log_progress) -> str:
+def _map_reduce_analysis(provider: str, articles: list[Article], system_prompt: str, lang: str, log_progress) -> str:
     chunks = _chunk_articles(articles, config.CHUNK_TOKEN_SIZE)
     log_progress(f"📦 Corpus split into {len(chunks)} chunks")
 
@@ -303,15 +299,8 @@ def _map_reduce_analysis(client, articles: list[Article], system_prompt: str, la
         log_progress(f"🔄 Map: analyzing chunk {i}/{len(chunks)} ({len(chunk)} articles)...")
         chunk_text = _format_corpus(chunk)
         prompt = map_template.format(corpus=chunk_text)
-
-        response = client.messages.create(
-            model=config.ANTHROPIC_MODEL,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        partial_syntheses.append(response.content[0].text)
+        result = call_llm(provider, system_prompt, prompt, max_tokens=4096)
+        partial_syntheses.append(result)
 
     log_progress("🔄 Reduce: consolidating partial syntheses...")
     combined = "\n\n===== PARTIAL SYNTHESIS =====\n\n".join(
@@ -319,15 +308,7 @@ def _map_reduce_analysis(client, articles: list[Article], system_prompt: str, la
     )
     reduce_template = REDUCE_PROMPTS.get(lang, REDUCE_PROMPTS["fr"])
     prompt = reduce_template.format(n=len(partial_syntheses), partial_syntheses=combined)
-
-    response = client.messages.create(
-        model=config.ANTHROPIC_MODEL,
-        max_tokens=8192,
-        system=system_prompt,
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    return response.content[0].text
+    return call_llm(provider, system_prompt, prompt, max_tokens=8192)
 
 
 def _generate_fallback_report(articles: list[Article], lang: str = "fr") -> str:

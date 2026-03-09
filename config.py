@@ -16,12 +16,15 @@ def _get_secret(key: str, default: str = "") -> str:
 
 ANTHROPIC_API_KEY = _get_secret("ANTHROPIC_API_KEY")
 PERPLEXITY_API_KEY = _get_secret("PERPLEXITY_API_KEY")
+MISTRAL_API_KEY = _get_secret("MISTRAL_API_KEY")
 NCBI_API_KEY = _get_secret("NCBI_API_KEY")
 NCBI_EMAIL = _get_secret("NCBI_EMAIL", "biblio@example.com")
 
-ANTHROPIC_MODEL = "claude-opus-4-6"
+ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 PERPLEXITY_MODEL = "llama-3.1-sonar-large-128k-online"
 PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
+MISTRAL_MODEL = "mistral-large-latest"
+MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
 
 MAX_RESULTS_PER_SOURCE = 50
 DEDUP_TITLE_THRESHOLD = 90

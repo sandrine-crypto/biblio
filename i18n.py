@@ -23,22 +23,31 @@ TRANSLATIONS = {
         "max_results_label": "Resultats max par source",
         "api_config_header": "Configuration API",
         "anthropic_key_label": "Cle API Anthropic",
-        "anthropic_key_help": "Requis pour l'analyse LLM (Claude).",
-        "perplexity_key_label": "Cle API Perplexity (optionnel)",
-        "perplexity_key_help": "Pour la verification factuelle.",
+        "anthropic_key_help": "Pour Claude.",
+        "perplexity_key_label": "Cle API Perplexity",
+        "perplexity_key_help": "Pour Perplexity.",
+        "mistral_key_label": "Cle API Mistral",
+        "mistral_key_help": "Pour Mistral AI.",
         "ncbi_key_label": "Cle API NCBI (optionnel)",
         "ncbi_key_help": "Augmente le rate limit PubMed (10 req/s au lieu de 3).",
         "api_status_title": "Statut des APIs :",
-        "api_anthropic_ok": "Anthropic (Claude)",
-        "api_anthropic_missing": "Anthropic — saisissez la cle ci-dessus ou ajoutez `ANTHROPIC_API_KEY` dans Settings -> Secrets",
-        "api_perplexity_optional": "Perplexity (optionnel)",
         "run_button": "Lancer la recherche",
         "language_label": "Langue / Language",
+        # LLM selection
+        "llm_config_header": "Modeles LLM",
+        "llm_report_label": "LLM pour le rapport (Agent 2)",
+        "llm_verif_label": "LLM pour la verification (Agent 3)",
+        "llm_must_differ": "Les 2 modeles doivent etre differents.",
+        "llm_key_missing": "Cle API manquante pour {provider}.",
+        # PPTX
+        "pptx_header": "Presentation PPTX",
+        "pptx_slides_label": "Nombre de slides",
+        "download_pptx": "Telecharger PPTX",
         # Errors / warnings
         "error_no_keywords": "Veuillez entrer des mots-cles de recherche.",
-        "warning_no_anthropic": (
-            "Cle API Anthropic non configuree. L'analyse LLM sera en mode degrade. "
-            "Ajoutez la cle dans la sidebar ou dans Settings -> Secrets (ANTHROPIC_API_KEY)."
+        "warning_no_llm_key": (
+            "Cle API non configuree pour le LLM selectionne. "
+            "Ajoutez la cle dans la sidebar ou dans Settings -> Secrets."
         ),
         "error_no_sources": "Veuillez selectionner au moins une source.",
         "no_articles_found": "Aucun article trouve. Essayez d'elargir vos criteres de recherche.",
@@ -80,7 +89,7 @@ TRANSLATIONS = {
         "label_source": "Source:",
         "verification_unavailable": (
             "Verification factuelle non disponible. "
-            "Configurez PERPLEXITY_API_KEY pour activer cette fonctionnalite."
+            "Configurez la cle API du LLM de verification pour activer cette fonctionnalite."
         ),
         # HTML report
         "html_title": "Rapport de Recherche Bibliographique Scientifique",
@@ -121,22 +130,31 @@ TRANSLATIONS = {
         "max_results_label": "Max results per source",
         "api_config_header": "API Configuration",
         "anthropic_key_label": "Anthropic API Key",
-        "anthropic_key_help": "Required for LLM analysis (Claude).",
-        "perplexity_key_label": "Perplexity API Key (optional)",
-        "perplexity_key_help": "For fact-checking.",
+        "anthropic_key_help": "For Claude.",
+        "perplexity_key_label": "Perplexity API Key",
+        "perplexity_key_help": "For Perplexity.",
+        "mistral_key_label": "Mistral API Key",
+        "mistral_key_help": "For Mistral AI.",
         "ncbi_key_label": "NCBI API Key (optional)",
         "ncbi_key_help": "Increases PubMed rate limit (10 req/s instead of 3).",
         "api_status_title": "API Status:",
-        "api_anthropic_ok": "Anthropic (Claude)",
-        "api_anthropic_missing": "Anthropic — enter the key above or add `ANTHROPIC_API_KEY` in Settings -> Secrets",
-        "api_perplexity_optional": "Perplexity (optional)",
         "run_button": "Start search",
         "language_label": "Langue / Language",
+        # LLM selection
+        "llm_config_header": "LLM Models",
+        "llm_report_label": "LLM for report (Agent 2)",
+        "llm_verif_label": "LLM for verification (Agent 3)",
+        "llm_must_differ": "The 2 models must be different.",
+        "llm_key_missing": "API key missing for {provider}.",
+        # PPTX
+        "pptx_header": "PPTX Presentation",
+        "pptx_slides_label": "Number of slides",
+        "download_pptx": "Download PPTX",
         # Errors / warnings
         "error_no_keywords": "Please enter search keywords.",
-        "warning_no_anthropic": (
-            "Anthropic API key not configured. LLM analysis will run in degraded mode. "
-            "Add the key in the sidebar or in Settings -> Secrets (ANTHROPIC_API_KEY)."
+        "warning_no_llm_key": (
+            "API key not configured for the selected LLM. "
+            "Add the key in the sidebar or in Settings -> Secrets."
         ),
         "error_no_sources": "Please select at least one source.",
         "no_articles_found": "No articles found. Try broadening your search criteria.",
@@ -178,7 +196,7 @@ TRANSLATIONS = {
         "label_source": "Source:",
         "verification_unavailable": (
             "Fact-checking unavailable. "
-            "Configure PERPLEXITY_API_KEY to enable this feature."
+            "Configure the verification LLM API key to enable this feature."
         ),
         # HTML report
         "html_title": "Scientific Literature Review Report",

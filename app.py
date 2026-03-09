@@ -16,6 +16,8 @@ from agents.agent2_analyzer import run_analysis
 from agents.agent3_editor import run_editing
 from utils.bibtex_export import generate_bibtex
 from utils.pdf_report import generate_html_report
+from utils.pptx_report import generate_pptx
+from llm_client import CLAUDE, MISTRAL, PERPLEXITY, PROVIDER_LABELS, is_provider_available
 from i18n import t
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -29,6 +31,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+LLM_OPTIONS = [CLAUDE, MISTRAL, PERPLEXITY]
+LLM_DISPLAY = [PROVIDER_LABELS[p] for p in LLM_OPTIONS]
 
 
 def _get_lang() -> str:
@@ -79,9 +84,40 @@ def main():
 
         max_results = st.slider(t("max_results_label", lang), 10, 100, 50, step=10)
 
+        # ---- LLM model selection ----
+        st.subheader(f"🤖 {t('llm_config_header', lang)}")
+
+        llm_report_idx = st.selectbox(
+            t("llm_report_label", lang),
+            options=range(len(LLM_OPTIONS)),
+            format_func=lambda i: LLM_DISPLAY[i],
+            index=0,  # Claude by default
+            key="llm_report_select",
+        )
+        llm_report = LLM_OPTIONS[llm_report_idx]
+
+        # Filter verification options to exclude the report LLM
+        verif_options = [i for i in range(len(LLM_OPTIONS)) if LLM_OPTIONS[i] != llm_report]
+        verif_display = [LLM_DISPLAY[i] for i in verif_options]
+
+        llm_verif_choice = st.selectbox(
+            t("llm_verif_label", lang),
+            options=range(len(verif_options)),
+            format_func=lambda i: verif_display[i],
+            index=0,
+            key="llm_verif_select",
+        )
+        llm_verif = LLM_OPTIONS[verif_options[llm_verif_choice]]
+
+        st.caption(f"ℹ️ {t('llm_must_differ', lang)}")
+
+        # ---- PPTX settings ----
+        st.subheader(f"📊 {t('pptx_header', lang)}")
+        num_slides = st.slider(t("pptx_slides_label", lang), 5, 40, 15, step=1)
+
+        # ---- API keys ----
         st.subheader(f"🔑 {t('api_config_header', lang)}")
 
-        # Read keys: st.secrets > env var > sidebar input
         def _resolve_key(secret_name: str) -> str:
             try:
                 if secret_name in st.secrets:
@@ -92,35 +128,47 @@ def main():
 
         stored_anthropic = _resolve_key("ANTHROPIC_API_KEY")
         stored_perplexity = _resolve_key("PERPLEXITY_API_KEY")
+        stored_mistral = _resolve_key("MISTRAL_API_KEY")
         stored_ncbi_key = _resolve_key("NCBI_API_KEY")
 
+        # Anthropic key input
         if not stored_anthropic:
             anthropic_key_input = st.text_input(
                 t("anthropic_key_label", lang),
-                type="password",
-                key="anthropic_key",
+                type="password", key="anthropic_key",
                 help=t("anthropic_key_help", lang),
                 placeholder="sk-ant-...",
             )
         else:
             anthropic_key_input = ""
 
+        # Mistral key input
+        if not stored_mistral:
+            mistral_key_input = st.text_input(
+                t("mistral_key_label", lang),
+                type="password", key="mistral_key",
+                help=t("mistral_key_help", lang),
+                placeholder="...",
+            )
+        else:
+            mistral_key_input = ""
+
+        # Perplexity key input
         if not stored_perplexity:
             perplexity_key_input = st.text_input(
                 t("perplexity_key_label", lang),
-                type="password",
-                key="perplexity_key",
+                type="password", key="perplexity_key",
                 help=t("perplexity_key_help", lang),
                 placeholder="pplx-...",
             )
         else:
             perplexity_key_input = ""
 
+        # NCBI key input
         if not stored_ncbi_key:
             ncbi_key_input = st.text_input(
                 t("ncbi_key_label", lang),
-                type="password",
-                key="ncbi_key",
+                type="password", key="ncbi_key",
                 help=t("ncbi_key_help", lang),
             )
         else:
@@ -128,19 +176,17 @@ def main():
 
         effective_anthropic_key = stored_anthropic or anthropic_key_input
         effective_perplexity_key = stored_perplexity or perplexity_key_input
+        effective_mistral_key = stored_mistral or mistral_key_input
         effective_ncbi_key = stored_ncbi_key or ncbi_key_input
 
+        # API status display
         api_status = []
-        if effective_anthropic_key:
-            api_status.append(f"✅ {t('api_anthropic_ok', lang)}")
-        else:
-            api_status.append(f"❌ {t('api_anthropic_missing', lang)}")
-
-        if effective_perplexity_key:
-            api_status.append("✅ Perplexity")
-        else:
-            api_status.append(f"⚠️ {t('api_perplexity_optional', lang)}")
-
+        for provider, key in [
+            ("Claude (Anthropic)", effective_anthropic_key),
+            ("Mistral AI", effective_mistral_key),
+            ("Perplexity", effective_perplexity_key),
+        ]:
+            api_status.append(f"✅ {provider}" if key else f"❌ {provider}")
         if effective_ncbi_key:
             api_status.append("✅ NCBI API Key")
 
@@ -156,12 +202,19 @@ def main():
             st.error(t("error_no_keywords", lang))
             return
 
+        # Apply keys to config
         config.ANTHROPIC_API_KEY = effective_anthropic_key
         config.PERPLEXITY_API_KEY = effective_perplexity_key
+        config.MISTRAL_API_KEY = effective_mistral_key
         config.NCBI_API_KEY = effective_ncbi_key
 
-        if not effective_anthropic_key:
-            st.warning(f"⚠️ {t('warning_no_anthropic', lang)}")
+        # Check API keys for selected LLMs
+        if not is_provider_available(llm_report):
+            st.error(t("llm_key_missing", lang, provider=PROVIDER_LABELS[llm_report]))
+            return
+        if not is_provider_available(llm_verif):
+            st.error(t("llm_key_missing", lang, provider=PROVIDER_LABELS[llm_verif]))
+            return
 
         sources_enabled = []
         if src_pubmed:
@@ -209,8 +262,8 @@ def main():
         st.session_state["date_from"] = date_from
         st.session_state["date_to"] = date_to
 
-        # ---- Agent 2 : Analysis ----------------------------------------------
-        with st.status(f"📝 {t('agent2_status', lang)}", expanded=True) as status2:
+        # ---- Agent 2 : Analysis (selected LLM) ------------------------------
+        with st.status(f"📝 {t('agent2_status', lang)} [{PROVIDER_LABELS[llm_report]}]", expanded=True) as status2:
             log_area_2 = st.empty()
             logs_2 = []
 
@@ -222,14 +275,15 @@ def main():
                 articles=articles,
                 progress_callback=progress_2,
                 lang=lang,
+                llm_provider=llm_report,
             )
 
             status2.update(label=f"✅ {t('agent2_done', lang)}", state="complete")
 
         st.session_state["report_markdown"] = report_markdown
 
-        # ---- Agent 3 : Editing -----------------------------------------------
-        with st.status(f"🎨 {t('agent3_status', lang)}", expanded=True) as status3:
+        # ---- Agent 3 : Editing (selected LLM for verification) ---------------
+        with st.status(f"🎨 {t('agent3_status', lang)} [{PROVIDER_LABELS[llm_verif]}]", expanded=True) as status3:
             log_area_3 = st.empty()
             logs_3 = []
 
@@ -242,6 +296,7 @@ def main():
                 report_markdown=report_markdown,
                 progress_callback=progress_3,
                 lang=lang,
+                llm_provider=llm_verif,
             )
 
             report_markdown = corrected_report
@@ -265,10 +320,28 @@ def main():
                 lang=lang,
             )
 
+            pptx_path = generate_pptx(
+                report_markdown=report_markdown,
+                articles=articles,
+                editor_report=editor_report,
+                keywords=keywords,
+                date_from=date_from,
+                date_to=date_to,
+                lang=lang,
+                num_slides=num_slides,
+            )
+
+            # Read PPTX bytes for download
+            pptx_bytes = b""
+            if os.path.exists(pptx_path):
+                with open(pptx_path, "rb") as f:
+                    pptx_bytes = f.read()
+
             status_export.update(label=f"✅ {t('exports_done', lang)}", state="complete")
 
         st.session_state["bibtex_content"] = bibtex_content
         st.session_state["html_report"] = html_report
+        st.session_state["pptx_bytes"] = pptx_bytes
 
         st.success(f"🎉 {t('pipeline_done', lang)}")
 
@@ -285,10 +358,11 @@ def _display_results():
     editor_report = st.session_state.get("editor_report")
     bibtex_content = st.session_state.get("bibtex_content", "")
     html_report = st.session_state.get("html_report", "")
+    pptx_bytes = st.session_state.get("pptx_bytes", b"")
 
     st.divider()
 
-    col_dl1, col_dl2, col_dl3 = st.columns(3)
+    col_dl1, col_dl2, col_dl3, col_dl4 = st.columns(4)
 
     with col_dl1:
         st.download_button(
@@ -319,6 +393,18 @@ def _display_results():
             )
         else:
             st.button(f"📥 {t('report_unavailable', lang)}", disabled=True, use_container_width=True)
+
+    with col_dl4:
+        if pptx_bytes:
+            st.download_button(
+                f"📥 {t('download_pptx', lang)}",
+                data=pptx_bytes,
+                file_name="rapport_bibliographique.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+            )
+        else:
+            st.button(f"📥 {t('download_pptx', lang)}", disabled=True, use_container_width=True)
 
     tab_report, tab_figures, tab_data, tab_verification = st.tabs([
         f"📝 {t('tab_report', lang)}",

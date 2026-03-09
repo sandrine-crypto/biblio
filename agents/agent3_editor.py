@@ -15,6 +15,7 @@ import requests as req
 import config
 from models import Article, VerificationResult, EditorReport
 from i18n import t
+from llm_client import call_llm_json, PROVIDER_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +110,13 @@ def _extract_claims_with_sources(report: str, articles: list[Article]) -> list[d
     return claims
 
 
-def _perplexity_verify_claim(
+def _verify_claim_via_llm(
     claim: str,
     cited_articles: list[Article],
-    headers: dict,
+    llm_provider: str = "perplexity",
     lang: str = "fr",
 ) -> dict:
-    """Vérifie une claim en demandant à Perplexity de la confronter UNIQUEMENT
-    aux abstracts/textes des articles cités."""
+    """Verify a claim against cited articles using the specified LLM provider."""
 
     # Build context from cited articles only
     context_parts = []
@@ -185,25 +185,7 @@ def _perplexity_verify_claim(
         )
         user_content = f"Verifie cette affirmation par rapport aux articles fournis :\n\n{claim}"
 
-    payload = {
-        "model": config.PERPLEXITY_MODEL,
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_content},
-        ],
-        "max_tokens": 1024,
-    }
-
-    response = req.post(config.PERPLEXITY_API_URL, json=payload, headers=headers, timeout=60)
-    response.raise_for_status()
-
-    content = response.json()["choices"][0]["message"]["content"]
-
-    # Parse JSON from response
-    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group())
-    return json.loads(content)
+    return call_llm_json(llm_provider, system_content, user_content, max_tokens=1024)
 
 
 def verify_claims(
@@ -212,19 +194,23 @@ def verify_claims(
     progress_callback=None,
     max_iterations: int = 3,
     lang: str = "fr",
+    llm_provider: str = "perplexity",
 ) -> tuple[list[VerificationResult], float, str]:
-    """Vérifie les claims du rapport via Perplexity contre les articles cités.
+    """Verify report claims against cited articles using the specified LLM.
 
-    Itère jusqu'à 100% de confiance ou max_iterations.
+    Iterates until 100% confidence or max_iterations.
 
     Returns:
         (verifications, confidence_score, corrected_report)
     """
+    from llm_client import is_provider_available
+
     results = []
     corrected_report = report
 
-    if not config.PERPLEXITY_API_KEY:
-        msg = "⚠️ PERPLEXITY_API_KEY non configurée. Vérification factuelle ignorée."
+    if not is_provider_available(llm_provider):
+        provider_name = PROVIDER_LABELS.get(llm_provider, llm_provider)
+        msg = f"⚠️ API key not configured for {provider_name}. Fact-checking skipped."
         logger.warning(msg)
         if progress_callback:
             progress_callback(msg)
@@ -235,20 +221,18 @@ def verify_claims(
         if progress_callback:
             progress_callback(msg)
 
-    headers = {
-        "Authorization": f"Bearer {config.PERPLEXITY_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    provider_name = PROVIDER_LABELS.get(llm_provider, llm_provider)
+    log_progress(f"🤖 Verification LLM: {provider_name}")
 
     for iteration in range(1, max_iterations + 1):
-        log_progress(f"🔍 Itération {iteration}/{max_iterations} — Extraction des affirmations...")
+        log_progress(f"🔍 Iteration {iteration}/{max_iterations} — Extracting claims...")
 
         claims = _extract_claims_with_sources(corrected_report, articles)
         if not claims:
-            log_progress("ℹ️ Aucune affirmation avec source identifiable trouvée.")
+            log_progress("ℹ️ No claims with identifiable sources found.")
             break
 
-        log_progress(f"🔍 Vérification de {len(claims)} affirmations contre les articles cités...")
+        log_progress(f"🔍 Verifying {len(claims)} claims against cited articles...")
 
         results = []
         corrections_applied = 0
@@ -257,18 +241,18 @@ def verify_claims(
             claim = claim_data["claim"]
             cited = claim_data["cited_articles"]
 
-            log_progress(f"  [{i}/{len(claims)}] Vérification contre {len(cited)} article(s)...")
+            log_progress(f"  [{i}/{len(claims)}] Checking against {len(cited)} article(s)...")
 
             verification = None
             # Retry up to 2 times on parse errors
             for attempt in range(2):
                 try:
-                    verification = _perplexity_verify_claim(claim, cited, headers, lang=lang)
+                    verification = _verify_claim_via_llm(claim, cited, llm_provider=llm_provider, lang=lang)
                     break
                 except (json.JSONDecodeError, ValueError) as e:
-                    logger.warning(f"Tentative {attempt+1} - erreur parsing claim {i}: {e}")
+                    logger.warning(f"Attempt {attempt+1} - parse error claim {i}: {e}")
                 except Exception as e:
-                    logger.warning(f"Tentative {attempt+1} - erreur claim {i}: {e}")
+                    logger.warning(f"Attempt {attempt+1} - error claim {i}: {e}")
                     break  # Don't retry on network/API errors
 
             if verification:
@@ -604,6 +588,7 @@ def run_editing(
     report_markdown: str,
     progress_callback=None,
     lang: str = "fr",
+    llm_provider: str = "perplexity",
 ) -> tuple[EditorReport, str]:
     """Run verification, visualizations, and final report generation.
 
@@ -612,6 +597,7 @@ def run_editing(
         report_markdown: Markdown report from Agent 2
         progress_callback: Optional function (message: str)
         lang: Output language ('fr' or 'en')
+        llm_provider: LLM provider for verification
 
     Returns:
         Tuple (EditorReport, corrected_report_markdown)
@@ -626,7 +612,7 @@ def run_editing(
     # 1. Vérification factuelle + corrections
     log_progress("🔎 Phase de vérification factuelle (vérification contre les articles cités)...")
     verifications, confidence, corrected_report = verify_claims(
-        report_markdown, articles, progress_callback, lang=lang,
+        report_markdown, articles, progress_callback, lang=lang, llm_provider=llm_provider,
     )
     editor_report.verifications = verifications
     editor_report.confidence_score = confidence
