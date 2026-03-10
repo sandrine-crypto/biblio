@@ -18,51 +18,47 @@ def search_europe_pmc(keywords: str, date_from: str, date_to: str, max_results: 
     if max_results is None:
         max_results = config.MAX_RESULTS_PER_SOURCE
 
-    try:
-        year_from = date_from.split("/")[0] if "/" in date_from else date_from[:4]
-        year_to = date_to.split("/")[0] if "/" in date_to else date_to[:4]
+    year_from = date_from.split("/")[0] if "/" in date_from else date_from[:4]
+    year_to = date_to.split("/")[0] if "/" in date_to else date_to[:4]
 
-        query = f"{keywords} (FIRST_PDATE:[{year_from}-01-01 TO {year_to}-12-31])"
-        logger.info(f"Europe PMC search: {query}")
+    query = f"{keywords} (FIRST_PDATE:[{year_from}-01-01 TO {year_to}-12-31])"
+    logger.info(f"Europe PMC search: {query}")
 
-        cursor_mark = "*"
-        page_size = min(max_results, 25)
+    cursor_mark = "*"
+    page_size = min(max_results, 25)
 
-        while len(articles) < max_results:
-            params = {
-                "query": query,
-                "format": "json",
-                "pageSize": page_size,
-                "cursorMark": cursor_mark,
-                "resultType": "core",
-            }
+    while len(articles) < max_results:
+        params = {
+            "query": query,
+            "format": "json",
+            "pageSize": page_size,
+            "cursorMark": cursor_mark,
+            "resultType": "core",
+        }
 
-            response = requests.get(BASE_URL, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
+        response = requests.get(BASE_URL, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
 
-            results = data.get("resultList", {}).get("result", [])
-            if not results:
-                break
+        results = data.get("resultList", {}).get("result", [])
+        if not results:
+            break
 
-            for result in results:
-                try:
-                    article = _parse_result(result)
-                    articles.append(article)
-                except Exception as e:
-                    logger.warning(f"Europe PMC: erreur parsing: {e}")
+        for result in results:
+            try:
+                article = _parse_result(result)
+                articles.append(article)
+            except Exception as e:
+                logger.warning(f"Europe PMC: erreur parsing: {e}")
 
-            next_cursor = data.get("nextCursorMark")
-            if not next_cursor or next_cursor == cursor_mark:
-                break
-            cursor_mark = next_cursor
+        next_cursor = data.get("nextCursorMark")
+        if not next_cursor or next_cursor == cursor_mark:
+            break
+        cursor_mark = next_cursor
 
-            time.sleep(0.5)
+        time.sleep(0.5)
 
-        logger.info(f"Europe PMC: {len(articles)} articles collectés")
-
-    except Exception as e:
-        logger.error(f"Europe PMC search error: {e}")
+    logger.info(f"Europe PMC: {len(articles)} articles collectés")
 
     return articles[:max_results]
 

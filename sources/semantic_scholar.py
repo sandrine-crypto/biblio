@@ -19,54 +19,50 @@ def search_semantic_scholar(keywords: str, date_from: str, date_to: str, max_res
     if max_results is None:
         max_results = config.MAX_RESULTS_PER_SOURCE
 
-    try:
-        year_from = date_from.split("/")[0] if "/" in date_from else date_from[:4]
-        year_to = date_to.split("/")[0] if "/" in date_to else date_to[:4]
+    year_from = date_from.split("/")[0] if "/" in date_from else date_from[:4]
+    year_to = date_to.split("/")[0] if "/" in date_to else date_to[:4]
 
-        params = {
-            "query": keywords,
-            "fields": FIELDS,
-            "limit": min(max_results, 100),
-            "year": f"{year_from}-{year_to}",
-        }
+    params = {
+        "query": keywords,
+        "fields": FIELDS,
+        "limit": min(max_results, 100),
+        "year": f"{year_from}-{year_to}",
+    }
 
-        logger.info(f"Semantic Scholar search: {keywords} ({year_from}-{year_to})")
+    logger.info(f"Semantic Scholar search: {keywords} ({year_from}-{year_to})")
 
-        offset = 0
-        while len(articles) < max_results:
-            params["offset"] = offset
-            response = requests.get(BASE_URL, params=params, timeout=30)
+    offset = 0
+    while len(articles) < max_results:
+        params["offset"] = offset
+        response = requests.get(BASE_URL, params=params, timeout=30)
 
-            if response.status_code == 429:
-                logger.warning("Semantic Scholar: rate limited, waiting 5s...")
-                time.sleep(5)
-                continue
+        if response.status_code == 429:
+            logger.warning("Semantic Scholar: rate limited, waiting 5s...")
+            time.sleep(5)
+            continue
 
-            response.raise_for_status()
-            data = response.json()
+        response.raise_for_status()
+        data = response.json()
 
-            papers = data.get("data", [])
-            if not papers:
-                break
+        papers = data.get("data", [])
+        if not papers:
+            break
 
-            for paper in papers:
-                try:
-                    article = _parse_paper(paper)
-                    articles.append(article)
-                except Exception as e:
-                    logger.warning(f"Semantic Scholar: erreur parsing: {e}")
+        for paper in papers:
+            try:
+                article = _parse_paper(paper)
+                articles.append(article)
+            except Exception as e:
+                logger.warning(f"Semantic Scholar: erreur parsing: {e}")
 
-            total = data.get("total", 0)
-            offset += len(papers)
-            if offset >= total or offset >= max_results:
-                break
+        total = data.get("total", 0)
+        offset += len(papers)
+        if offset >= total or offset >= max_results:
+            break
 
-            time.sleep(1)  # Rate limiting
+        time.sleep(1)  # Rate limiting
 
-        logger.info(f"Semantic Scholar: {len(articles)} articles collectés")
-
-    except Exception as e:
-        logger.error(f"Semantic Scholar search error: {e}")
+    logger.info(f"Semantic Scholar: {len(articles)} articles collectés")
 
     return articles[:max_results]
 
