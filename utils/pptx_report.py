@@ -25,6 +25,8 @@ GENOWAY_LIGHT_GRAY = RGBColor(0xF2, 0xF2, 0xF2) # #F2F2F2
 GENOWAY_WHITE = RGBColor(0xFF, 0xFF, 0xFF)       # #FFFFFF
 GENOWAY_MID_GRAY = RGBColor(0x66, 0x66, 0x66)   # #666666
 
+GENOWAY_FONT = "Arial"  # genOway corporate font
+
 SLIDE_WIDTH = Inches(13.333)  # 16:9
 SLIDE_HEIGHT = Inches(7.5)
 
@@ -43,8 +45,19 @@ def _add_red_bar(slide, prs):
 
 def _add_footer(slide, prs, text="genOway | Confidential"):
     """Add footer text at the bottom of a slide."""
+    # Red bottom bar (symmetry with top bar)
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        left=Inches(0), top=prs.slide_height - Inches(0.08),
+        width=prs.slide_width, height=Inches(0.08),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = GENOWAY_RED
+    shape.line.fill.background()
+
+    # Footer text
     left = Inches(0.5)
-    top = prs.slide_height - Inches(0.45)
+    top = prs.slide_height - Inches(0.5)
     width = prs.slide_width - Inches(1)
     height = Inches(0.35)
     txBox = slide.shapes.add_textbox(left, top, width, height)
@@ -52,6 +65,7 @@ def _add_footer(slide, prs, text="genOway | Confidential"):
     p = tf.paragraphs[0]
     p.text = text
     p.font.size = Pt(8)
+    p.font.name = GENOWAY_FONT
     p.font.color.rgb = GENOWAY_MID_GRAY
     p.alignment = PP_ALIGN.RIGHT
 
@@ -87,6 +101,7 @@ def _add_title_slide(prs, title: str, subtitle: str, lang: str):
     p.text = title
     p.font.size = Pt(36)
     p.font.bold = True
+    p.font.name = GENOWAY_FONT
     p.font.color.rgb = GENOWAY_WHITE
     p.alignment = PP_ALIGN.LEFT
 
@@ -97,6 +112,7 @@ def _add_title_slide(prs, title: str, subtitle: str, lang: str):
     p2 = tf2.paragraphs[0]
     p2.text = subtitle
     p2.font.size = Pt(18)
+    p2.font.name = GENOWAY_FONT
     p2.font.color.rgb = GENOWAY_DARK_GRAY
     p2.alignment = PP_ALIGN.LEFT
 
@@ -106,6 +122,7 @@ def _add_title_slide(prs, title: str, subtitle: str, lang: str):
     p3 = tf3.paragraphs[0]
     p3.text = datetime.now().strftime("%d/%m/%Y")
     p3.font.size = Pt(14)
+    p3.font.name = GENOWAY_FONT
     p3.font.color.rgb = GENOWAY_MID_GRAY
 
     # genOway branding
@@ -116,6 +133,7 @@ def _add_title_slide(prs, title: str, subtitle: str, lang: str):
     run.text = "genOway"
     run.font.size = Pt(24)
     run.font.bold = True
+    run.font.name = GENOWAY_FONT
     run.font.color.rgb = GENOWAY_RED
 
 
@@ -142,6 +160,7 @@ def _add_section_slide(prs, section_title: str):
     p.text = section_title
     p.font.size = Pt(32)
     p.font.bold = True
+    p.font.name = GENOWAY_FONT
     p.font.color.rgb = GENOWAY_DARK_GRAY
     p.alignment = PP_ALIGN.LEFT
 
@@ -162,6 +181,7 @@ def _add_content_slide(prs, title: str, body_text: str):
     p.text = title
     p.font.size = Pt(24)
     p.font.bold = True
+    p.font.name = GENOWAY_FONT
     p.font.color.rgb = GENOWAY_RED
     p.alignment = PP_ALIGN.LEFT
 
@@ -195,6 +215,7 @@ def _add_content_slide(prs, title: str, body_text: str):
             run = p.add_run()
             run.text = part
             run.font.size = Pt(14)
+            run.font.name = GENOWAY_FONT
             run.font.color.rgb = GENOWAY_DARK_GRAY
             if i_part % 2 == 1:  # odd parts are bold
                 run.font.bold = True
@@ -224,6 +245,7 @@ def _add_figure_slide(prs, figure_path: str, caption: str):
     p.text = caption
     p.font.size = Pt(11)
     p.font.italic = True
+    p.font.name = GENOWAY_FONT
     p.font.color.rgb = GENOWAY_MID_GRAY
     p.alignment = PP_ALIGN.CENTER
 
@@ -244,6 +266,7 @@ def _add_kpi_slide(prs, article_count: int, sources: str, confidence: float,
     p.text = "Key Metrics" if lang == "en" else "Indicateurs cles"
     p.font.size = Pt(28)
     p.font.bold = True
+    p.font.name = GENOWAY_FONT
     p.font.color.rgb = GENOWAY_RED
 
     # KPI cards
@@ -285,6 +308,7 @@ def _add_kpi_slide(prs, article_count: int, sources: str, confidence: float,
         run_val.text = value
         run_val.font.size = Pt(32)
         run_val.font.bold = True
+        run_val.font.name = GENOWAY_FONT
         run_val.font.color.rgb = GENOWAY_RED
 
         # Label
@@ -297,6 +321,7 @@ def _add_kpi_slide(prs, article_count: int, sources: str, confidence: float,
         run_lbl.text = label.upper()
         run_lbl.font.size = Pt(10)
         run_lbl.font.bold = True
+        run_lbl.font.name = GENOWAY_FONT
         run_lbl.font.color.rgb = GENOWAY_MID_GRAY
 
     _add_footer(slide, prs)
@@ -359,6 +384,7 @@ def generate_pptx(
     date_to: str,
     lang: str = "fr",
     num_slides: int = 15,
+    template_path: str | None = None,
 ) -> str:
     """Generate a PPTX presentation with genOway branding.
 
@@ -371,11 +397,20 @@ def generate_pptx(
         date_to: End date
         lang: Language
         num_slides: Target number of slides (approximate)
+        template_path: Optional path to a blank PPTX template to use as base
 
     Returns:
         Path to the generated PPTX file
     """
-    prs = Presentation()
+    if template_path and os.path.exists(template_path):
+        prs = Presentation(template_path)
+        # Remove existing slides from the template (keep masters/theme only)
+        while len(prs.slides) > 0:
+            rId = prs.slides._sldIdLst[0].get('r:id')
+            prs.part.drop_rel(rId)
+            prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
+    else:
+        prs = Presentation()
     prs.slide_width = SLIDE_WIDTH
     prs.slide_height = SLIDE_HEIGHT
 
@@ -448,6 +483,7 @@ def generate_pptx(
     run.text = "Thank you" if lang == "en" else "Merci"
     run.font.size = Pt(44)
     run.font.bold = True
+    run.font.name = GENOWAY_FONT
     run.font.color.rgb = GENOWAY_WHITE
 
     p2 = tf.add_paragraph()
@@ -456,6 +492,7 @@ def generate_pptx(
     run2.text = "genOway"
     run2.font.size = Pt(28)
     run2.font.bold = True
+    run2.font.name = GENOWAY_FONT
     run2.font.color.rgb = GENOWAY_WHITE
 
     p3 = tf.add_paragraph()
@@ -464,6 +501,7 @@ def generate_pptx(
     run3 = p3.add_run()
     run3.text = "www.genoway.com"
     run3.font.size = Pt(14)
+    run3.font.name = GENOWAY_FONT
     run3.font.color.rgb = GENOWAY_WHITE
 
     # Save

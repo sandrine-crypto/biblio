@@ -114,6 +114,12 @@ def main():
         # ---- PPTX settings ----
         st.subheader(f"📊 {t('pptx_header', lang)}")
         num_slides = st.slider(t("pptx_slides_label", lang), 5, 40, 15, step=1)
+        pptx_template_file = st.file_uploader(
+            t("pptx_template_label", lang),
+            type=["pptx"],
+            help=t("pptx_template_help", lang),
+            key="pptx_template",
+        )
 
         # ---- API keys ----
         st.subheader(f"🔑 {t('api_config_header', lang)}")
@@ -320,6 +326,13 @@ def main():
                 lang=lang,
             )
 
+            # Save uploaded PPTX template if provided
+            pptx_template_path = None
+            if pptx_template_file is not None:
+                pptx_template_path = os.path.join(config.OUTPUT_DIR, "_template.pptx")
+                with open(pptx_template_path, "wb") as tf:
+                    tf.write(pptx_template_file.getbuffer())
+
             pptx_path = generate_pptx(
                 report_markdown=report_markdown,
                 articles=articles,
@@ -329,6 +342,7 @@ def main():
                 date_to=date_to,
                 lang=lang,
                 num_slides=num_slides,
+                template_path=pptx_template_path,
             )
 
             # Read PPTX bytes for download

@@ -42,6 +42,8 @@ TRANSLATIONS = {
         # PPTX
         "pptx_header": "Presentation PPTX",
         "pptx_slides_label": "Nombre de slides",
+        "pptx_template_label": "Modele PPTX (optionnel)",
+        "pptx_template_help": "Uploadez un fichier PPTX vide pour utiliser ses slide masters, polices et couleurs comme base.",
         "download_pptx": "Telecharger PPTX",
         # Errors / warnings
         "error_no_keywords": "Veuillez entrer des mots-cles de recherche.",
@@ -149,6 +151,8 @@ TRANSLATIONS = {
         # PPTX
         "pptx_header": "PPTX Presentation",
         "pptx_slides_label": "Number of slides",
+        "pptx_template_label": "PPTX template (optional)",
+        "pptx_template_help": "Upload a blank PPTX file to use its slide masters, fonts and colors as a base.",
         "download_pptx": "Download PPTX",
         # Errors / warnings
         "error_no_keywords": "Please enter search keywords.",
