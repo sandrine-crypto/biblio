@@ -9,6 +9,16 @@ TRANSLATIONS = {
         "main_subtitle": "Pipeline multi-agents automatise : **Collecte -> Analyse -> Edition**",
         # Sidebar
         "sidebar_header": "Parametres de recherche",
+        "semantic_mode_label": "Recherche semantique",
+        "semantic_mode_help": (
+            "Activez pour ecrire votre requete en langage naturel. "
+            "Un LLM la transformera en requete booleenne optimisee (AND, OR, MeSH...)."
+        ),
+        "semantic_placeholder": "ex: Je cherche des articles sur l'edition genetique CRISPR appliquee au traitement du cancer avec des inhibiteurs de checkpoint immunitaire",
+        "semantic_help": (
+            "Decrivez votre sujet de recherche en langage naturel. "
+            "Le LLM generera automatiquement une requete booleenne optimisee."
+        ),
         "keywords_label": "Mots-cles de recherche",
         "keywords_placeholder": 'ex: "gene therapy" CRISPR cancer "immune checkpoint"',
         "keywords_help": (
@@ -118,6 +128,16 @@ TRANSLATIONS = {
         "main_subtitle": "Multi-agent automated pipeline: **Collection -> Analysis -> Editing**",
         # Sidebar
         "sidebar_header": "Search parameters",
+        "semantic_mode_label": "Semantic search",
+        "semantic_mode_help": (
+            "Enable to write your query in natural language. "
+            "An LLM will transform it into an optimized boolean query (AND, OR, MeSH...)."
+        ),
+        "semantic_placeholder": "e.g.: I'm looking for articles about CRISPR gene editing applied to cancer treatment with immune checkpoint inhibitors",
+        "semantic_help": (
+            "Describe your research topic in natural language. "
+            "The LLM will automatically generate an optimized boolean query."
+        ),
         "keywords_label": "Search keywords",
         "keywords_placeholder": 'e.g.: "gene therapy" CRISPR cancer "immune checkpoint"',
         "keywords_help": (

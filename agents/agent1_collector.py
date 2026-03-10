@@ -29,6 +29,9 @@ def run_collection(
     sources_enabled: list[str] | None = None,
     max_results: int = 50,
     progress_callback=None,
+    semantic_mode: bool = False,
+    llm_provider: str | None = None,
+    lang: str = "fr",
 ) -> tuple[list[Article], CollectionReport]:
     """Exécute la collecte multi-sources avec déduplication.
 
@@ -39,12 +42,35 @@ def run_collection(
         sources_enabled: Liste des sources à utiliser (None = toutes)
         max_results: Nombre max de résultats par source
         progress_callback: Fonction optionnelle (message: str) pour le suivi
+        semantic_mode: Si True, transformer la requête sémantique en booléenne via LLM
+        llm_provider: Fournisseur LLM pour la transformation (requis si semantic_mode=True)
+        lang: Langue pour les prompts LLM
 
     Returns:
         Tuple (articles_dédupliqués, rapport_collecte)
     """
     # Normalize multi-line keywords to single line (preserve quoted expressions)
     keywords = " ".join(keywords.splitlines()).strip()
+
+    # Semantic → Boolean transformation
+    if semantic_mode and llm_provider:
+        from utils.query_transformer import transform_query
+
+        def log_progress(msg: str):
+            logger.info(msg)
+            if progress_callback:
+                progress_callback(msg)
+
+        log_progress("🧠 Transformation sémantique → booléenne..." if lang == "fr"
+                     else "🧠 Semantic → boolean query transformation...")
+        try:
+            keywords = transform_query(keywords, llm_provider, lang)
+            log_progress(f"✅ Requête booléenne : `{keywords}`" if lang == "fr"
+                         else f"✅ Boolean query: `{keywords}`")
+        except Exception as e:
+            logger.error(f"Query transformation failed: {e}")
+            log_progress(f"⚠️ Transformation échouée, requête originale conservée — {e}" if lang == "fr"
+                         else f"⚠️ Transformation failed, using original query — {e}")
 
     if sources_enabled is None:
         sources_enabled = list(SOURCE_FUNCTIONS.keys())

@@ -63,10 +63,17 @@ def main():
 
         st.header(f"⚙️ {t('sidebar_header', lang)}")
 
+        semantic_mode = st.toggle(
+            t("semantic_mode_label", lang),
+            value=False,
+            help=t("semantic_mode_help", lang),
+            key="semantic_mode",
+        )
+
         keywords = st.text_area(
             t("keywords_label", lang),
-            placeholder=t("keywords_placeholder", lang),
-            help=t("keywords_help", lang),
+            placeholder=t("semantic_placeholder", lang) if semantic_mode else t("keywords_placeholder", lang),
+            help=t("semantic_help", lang) if semantic_mode else t("keywords_help", lang),
             height=80,
         )
 
@@ -252,6 +259,9 @@ def main():
                 sources_enabled=sources_enabled,
                 max_results=max_results,
                 progress_callback=progress_1,
+                semantic_mode=semantic_mode,
+                llm_provider=llm_report,
+                lang=lang,
             )
 
             status1.update(
