@@ -405,10 +405,10 @@ def generate_pptx(
     if template_path and os.path.exists(template_path):
         prs = Presentation(template_path)
         # Remove existing slides from the template (keep masters/theme only)
-        while len(prs.slides) > 0:
-            rId = prs.slides._sldIdLst[0].get('r:id')
-            prs.part.drop_rel(rId)
-            prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
+        # python-pptx has no public delete-slide API, so we manipulate the XML
+        sldIdLst = prs.slides._sldIdLst
+        for sldId in list(sldIdLst):
+            sldIdLst.remove(sldId)
     else:
         prs = Presentation()
     prs.slide_width = SLIDE_WIDTH
