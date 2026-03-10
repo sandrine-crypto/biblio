@@ -32,8 +32,8 @@ def search_pubmed(keywords: str, date_from: str, date_to: str, max_results: int 
         "sort": "relevance",
         "retmode": "json",
         "datetype": "pdat",
-        "mindate": date_from.replace("/", "-"),
-        "maxdate": date_to.replace("/", "-"),
+        "mindate": date_from,
+        "maxdate": date_to,
     }
     if config.NCBI_API_KEY:
         esearch_params["api_key"] = config.NCBI_API_KEY
