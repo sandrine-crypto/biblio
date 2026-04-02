@@ -157,10 +157,10 @@ def main():
         def _resolve_key(secret_name: str) -> str:
             try:
                 if secret_name in st.secrets:
-                    return str(st.secrets[secret_name])
+                    return str(st.secrets[secret_name]).strip()
             except Exception:
                 pass
-            return os.environ.get(secret_name, "")
+            return os.environ.get(secret_name, "").strip()
 
         stored_anthropic = _resolve_key("ANTHROPIC_API_KEY")
         stored_perplexity = _resolve_key("PERPLEXITY_API_KEY")
@@ -310,12 +310,26 @@ def main():
                 logs_2.append(msg)
                 log_area_2.markdown("\n\n".join(logs_2))
 
-            report_markdown, cited_metadata = run_analysis(
-                articles=articles,
-                progress_callback=progress_2,
-                lang=lang,
-                llm_provider=llm_report,
-            )
+            try:
+                report_markdown, cited_metadata = run_analysis(
+                    articles=articles,
+                    progress_callback=progress_2,
+                    lang=lang,
+                    llm_provider=llm_report,
+                )
+            except Exception as e:
+                err_str = str(type(e).__name__)
+                if "AuthenticationError" in err_str or "authentication" in str(e).lower():
+                    status2.update(label="❌ Erreur d'authentification", state="error")
+                    st.error(
+                        f"🔑 **Clé API {PROVIDER_LABELS[llm_report]} invalide ou expirée.**\n\n"
+                        f"Vérifiez que la clé est correctement configurée dans les Secrets Streamlit "
+                        f"(sans espace ni retour à la ligne) et qu'elle est toujours active sur votre compte."
+                    )
+                else:
+                    status2.update(label="❌ Erreur lors de l'analyse", state="error")
+                    st.error(f"Erreur agent 2 : {e}")
+                return
 
             status2.update(label=f"✅ {t('agent2_done', lang)}", state="complete")
 
