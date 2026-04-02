@@ -167,53 +167,46 @@ def main():
         stored_mistral = _resolve_key("MISTRAL_API_KEY")
         stored_ncbi_key = _resolve_key("NCBI_API_KEY")
 
-        # Anthropic key input
-        if not stored_anthropic:
-            anthropic_key_input = st.text_input(
-                t("anthropic_key_label", lang),
-                type="password", key="anthropic_key",
-                help=t("anthropic_key_help", lang),
-                placeholder="sk-ant-...",
-            )
-        else:
-            anthropic_key_input = ""
+        def _key_input(label: str, stored: str, widget_key: str,
+                       help_text: str, placeholder: str = "") -> str:
+            """Affiche un champ de clé API.
+            - Si un secret Streamlit est configuré : affiche un indicateur ✅ et
+              un champ optionnel pour le surcharger (utile si la clé stockée est invalide).
+            - Sinon : affiche le champ de saisie normal.
+            La valeur saisie dans le champ prend toujours le dessus sur le secret stocké.
+            """
+            if stored:
+                override = st.text_input(
+                    f"{label} {'(secret Streamlit détecté — laisser vide pour utiliser)' if lang == 'fr' else '(Streamlit secret detected — leave empty to use)'}",
+                    type="password", key=widget_key,
+                    help=help_text,
+                    placeholder=placeholder,
+                )
+                return override.strip() if override.strip() else stored
+            else:
+                return st.text_input(
+                    label,
+                    type="password", key=widget_key,
+                    help=help_text,
+                    placeholder=placeholder,
+                ).strip()
 
-        # Mistral key input
-        if not stored_mistral:
-            mistral_key_input = st.text_input(
-                t("mistral_key_label", lang),
-                type="password", key="mistral_key",
-                help=t("mistral_key_help", lang),
-                placeholder="...",
-            )
-        else:
-            mistral_key_input = ""
-
-        # Perplexity key input
-        if not stored_perplexity:
-            perplexity_key_input = st.text_input(
-                t("perplexity_key_label", lang),
-                type="password", key="perplexity_key",
-                help=t("perplexity_key_help", lang),
-                placeholder="pplx-...",
-            )
-        else:
-            perplexity_key_input = ""
-
-        # NCBI key input
-        if not stored_ncbi_key:
-            ncbi_key_input = st.text_input(
-                t("ncbi_key_label", lang),
-                type="password", key="ncbi_key",
-                help=t("ncbi_key_help", lang),
-            )
-        else:
-            ncbi_key_input = ""
-
-        effective_anthropic_key = stored_anthropic or anthropic_key_input
-        effective_perplexity_key = stored_perplexity or perplexity_key_input
-        effective_mistral_key = stored_mistral or mistral_key_input
-        effective_ncbi_key = stored_ncbi_key or ncbi_key_input
+        effective_anthropic_key = _key_input(
+            t("anthropic_key_label", lang), stored_anthropic,
+            "anthropic_key", t("anthropic_key_help", lang), "sk-ant-...",
+        )
+        effective_mistral_key = _key_input(
+            t("mistral_key_label", lang), stored_mistral,
+            "mistral_key", t("mistral_key_help", lang),
+        )
+        effective_perplexity_key = _key_input(
+            t("perplexity_key_label", lang), stored_perplexity,
+            "perplexity_key", t("perplexity_key_help", lang), "pplx-...",
+        )
+        effective_ncbi_key = _key_input(
+            t("ncbi_key_label", lang), stored_ncbi_key,
+            "ncbi_key", t("ncbi_key_help", lang),
+        )
 
         # API status display
         api_status = []
