@@ -1,4 +1,4 @@
-"""Agent 1 — Documentaliste : Collecte multi-sources et déduplication."""
+"""Agent 1 — Documentaliste : collecte multi-sources avec déduplication."""
 
 import json
 import logging
@@ -21,6 +21,15 @@ SOURCE_FUNCTIONS = {
     "google_scholar": search_google_scholar,
 }
 
+# Sources qui bénéficient d'une requête booléenne avec MeSH
+PUBMED_STYLE_SOURCES = {"pubmed"}
+
+# Sources qui fonctionnent mieux avec du langage naturel ou une requête neutre
+NEUTRAL_SOURCES = {"semantic_scholar"}
+
+# Sources qui acceptent le booléen mais sans tags PubMed
+EPMC_STYLE_SOURCES = {"europe_pmc", "google_scholar"}
+
 
 def run_collection(
     keywords: str,
@@ -36,7 +45,7 @@ def run_collection(
     """Exécute la collecte multi-sources avec déduplication.
 
     Args:
-        keywords: Termes de recherche
+        keywords: Termes de recherche (ou requête naturelle si semantic_mode=True)
         date_from: Date de début (YYYY/MM/DD)
         date_to: Date de fin (YYYY/MM/DD)
         sources_enabled: Liste des sources à utiliser (None = toutes)
@@ -49,28 +58,75 @@ def run_collection(
     Returns:
         Tuple (articles_dédupliqués, rapport_collecte)
     """
-    # Normalize multi-line keywords to single line (preserve quoted expressions)
-    keywords = " ".join(keywords.splitlines()).strip()
+    def log_progress(msg: str):
+        logger.info(msg)
+        if progress_callback:
+            progress_callback(msg)
 
-    # Semantic → Boolean transformation
+    # Normalise les sauts de ligne (préserve les expressions entre guillemets)
+    keywords = " ".join(keywords.splitlines()).strip()
+    original_keywords = keywords
+
+    # Dictionnaire des requêtes par source — initialement identique pour toutes
+    query_per_source: dict[str, str] = {}
+
+    # Transformation sémantique → booléenne si activée
     if semantic_mode and llm_provider:
         from utils.query_transformer import transform_query
 
-        def log_progress(msg: str):
-            logger.info(msg)
-            if progress_callback:
-                progress_callback(msg)
+        log_progress(
+            "🧠 Transformation sémantique → booléenne..."
+            if lang == "fr" else
+            "🧠 Semantic → boolean query transformation..."
+        )
 
-        log_progress("🧠 Transformation sémantique → booléenne..." if lang == "fr"
-                     else "🧠 Semantic → boolean query transformation...")
+        # Requête PubMed (avec MeSH)
         try:
-            keywords = transform_query(keywords, llm_provider, lang)
-            log_progress(f"✅ Requête booléenne : `{keywords}`" if lang == "fr"
-                         else f"✅ Boolean query: `{keywords}`")
+            pubmed_query = transform_query(original_keywords, llm_provider, lang, target="pubmed")
+            log_progress(
+                f"✅ Requête PubMed : `{pubmed_query}`"
+                if lang == "fr" else
+                f"✅ PubMed query: `{pubmed_query}`"
+            )
+            for src in PUBMED_STYLE_SOURCES:
+                query_per_source[src] = pubmed_query
         except Exception as e:
-            logger.error(f"Query transformation failed: {e}")
-            log_progress(f"⚠️ Transformation échouée, requête originale conservée — {e}" if lang == "fr"
-                         else f"⚠️ Transformation failed, using original query — {e}")
+            logger.error(f"Transformation PubMed échouée: {e}")
+            log_progress(
+                f"⚠️ Transformation PubMed échouée, requête originale conservée — {e}"
+                if lang == "fr" else
+                f"⚠️ PubMed transformation failed, using original query — {e}"
+            )
+            for src in PUBMED_STYLE_SOURCES:
+                query_per_source[src] = original_keywords
+
+        # Requête neutre (Europe PMC, sans MeSH)
+        try:
+            neutral_query = transform_query(original_keywords, llm_provider, lang, target="neutral")
+            log_progress(
+                f"✅ Requête Europe PMC / Scholar : `{neutral_query}`"
+                if lang == "fr" else
+                f"✅ Europe PMC / Scholar query: `{neutral_query}`"
+            )
+            for src in EPMC_STYLE_SOURCES:
+                query_per_source[src] = neutral_query
+        except Exception as e:
+            logger.error(f"Transformation neutre échouée: {e}")
+            for src in EPMC_STYLE_SOURCES:
+                query_per_source[src] = original_keywords
+
+        # Semantic Scholar : toujours la requête originale en langage naturel
+        for src in NEUTRAL_SOURCES:
+            query_per_source[src] = original_keywords
+            log_progress(
+                f"ℹ️ Semantic Scholar : requête naturelle conservée (moteur sémantique natif)"
+                if lang == "fr" else
+                f"ℹ️ Semantic Scholar: keeping natural language query (native semantic engine)"
+            )
+    else:
+        # Mode standard : même requête pour toutes les sources
+        for src in SOURCE_FUNCTIONS:
+            query_per_source[src] = keywords
 
     if sources_enabled is None:
         sources_enabled = list(SOURCE_FUNCTIONS.keys())
@@ -78,22 +134,18 @@ def run_collection(
     report = CollectionReport()
     all_articles: list[Article] = []
 
-    def log_progress(msg: str):
-        logger.info(msg)
-        if progress_callback:
-            progress_callback(msg)
-
     # Collecte par source
     for source_name in sources_enabled:
         if source_name not in SOURCE_FUNCTIONS:
             logger.warning(f"Source inconnue: {source_name}")
             continue
 
+        query = query_per_source.get(source_name, keywords)
         log_progress(f"🔍 Recherche {source_name}...")
         search_fn = SOURCE_FUNCTIONS[source_name]
 
         try:
-            results = search_fn(keywords, date_from, date_to, max_results=max_results)
+            results = search_fn(query, date_from, date_to, max_results=max_results)
             report.per_source[source_name] = len(results)
             all_articles.extend(results)
             log_progress(f"✅ {source_name}: {len(results)} articles trouvés")

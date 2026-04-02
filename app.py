@@ -107,16 +107,39 @@ def main():
         verif_options = [i for i in range(len(LLM_OPTIONS)) if LLM_OPTIONS[i] != llm_report]
         verif_display = [LLM_DISPLAY[i] for i in verif_options]
 
-        llm_verif_choice = st.selectbox(
-            t("llm_verif_label", lang),
-            options=range(len(verif_options)),
-            format_func=lambda i: verif_display[i],
-            index=0,
-            key="llm_verif_select",
-        )
-        llm_verif = LLM_OPTIONS[verif_options[llm_verif_choice]]
+        if not verif_options:
+            st.warning("⚠️ Configurez au moins 2 clés API pour activer la vérification croisée.")
+            llm_verif = llm_report
+        else:
+            llm_verif_choice = st.selectbox(
+                t("llm_verif_label", lang),
+                options=range(len(verif_options)),
+                format_func=lambda i: verif_display[i],
+                index=0,
+                key="llm_verif_select",
+            )
+            llm_verif = LLM_OPTIONS[verif_options[llm_verif_choice]]
 
         st.caption(f"ℹ️ {t('llm_must_differ', lang)}")
+
+        # Info mode sémantique — affiché ici car llm_report est maintenant défini
+        if semantic_mode:
+            st.info(
+                f"🧠 **{'Mode sémantique actif' if lang == 'fr' else 'Semantic mode active'}**\n\n"
+                + (
+                    f"**{PROVIDER_LABELS[llm_report]}** reformulera automatiquement votre requête "
+                    f"en syntaxe adaptée à chaque base de données :\n"
+                    f"- PubMed → requête booléenne avec termes MeSH\n"
+                    f"- Europe PMC → requête booléenne standard (sans tags PubMed)\n"
+                    f"- Semantic Scholar → langage naturel conservé (moteur sémantique natif)"
+                    if lang == "fr" else
+                    f"**{PROVIDER_LABELS[llm_report]}** will automatically reformulate your query "
+                    f"into syntax adapted to each database:\n"
+                    f"- PubMed → boolean query with MeSH terms\n"
+                    f"- Europe PMC → standard boolean query (no PubMed tags)\n"
+                    f"- Semantic Scholar → natural language kept (native semantic engine)"
+                )
+            )
 
         # ---- PPTX settings ----
         st.subheader(f"📊 {t('pptx_header', lang)}")

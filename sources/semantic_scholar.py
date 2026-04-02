@@ -13,7 +13,9 @@ BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 FIELDS = "title,authors,year,abstract,journal,externalIds,citationCount,fieldsOfStudy"
 
 
-def search_semantic_scholar(keywords: str, date_from: str, date_to: str, max_results: int | None = None) -> list[Article]:
+def search_semantic_scholar(
+    keywords: str, date_from: str, date_to: str, max_results: int | None = None
+) -> list[Article]:
     """Recherche Semantic Scholar et retourne une liste d'Articles."""
     articles = []
     if max_results is None:
@@ -29,15 +31,25 @@ def search_semantic_scholar(keywords: str, date_from: str, date_to: str, max_res
         "year": f"{year_from}-{year_to}",
     }
 
+    # Utilise la clé API si disponible (augmente le rate-limit)
+    headers = {}
+    api_key = getattr(config, "SEMANTIC_SCHOLAR_API_KEY", "")
+    if api_key:
+        headers["x-api-key"] = api_key
+
     logger.info(f"Semantic Scholar search: {keywords} ({year_from}-{year_to})")
 
     offset = 0
     while len(articles) < max_results:
         params["offset"] = offset
-        response = requests.get(BASE_URL, params=params, timeout=30)
+        try:
+            response = requests.get(BASE_URL, params=params, headers=headers, timeout=30)
+        except requests.RequestException as e:
+            logger.error(f"Semantic Scholar: erreur réseau: {e}")
+            break
 
         if response.status_code == 429:
-            logger.warning("Semantic Scholar: rate limited, waiting 5s...")
+            logger.warning("Semantic Scholar: rate limited, attente 5s...")
             time.sleep(5)
             continue
 
@@ -60,10 +72,9 @@ def search_semantic_scholar(keywords: str, date_from: str, date_to: str, max_res
         if offset >= total or offset >= max_results:
             break
 
-        time.sleep(1)  # Rate limiting
+        time.sleep(1)  # Respect du rate-limit
 
     logger.info(f"Semantic Scholar: {len(articles)} articles collectés")
-
     return articles[:max_results]
 
 
@@ -71,28 +82,22 @@ def _parse_paper(paper: dict) -> Article:
     """Parse un résultat Semantic Scholar en Article."""
     title = paper.get("title", "") or ""
 
-    authors = []
-    for author in paper.get("authors", []):
-        name = author.get("name", "")
-        if name:
-            authors.append(name)
+    authors = [
+        author.get("name", "")
+        for author in paper.get("authors", [])
+        if author.get("name")
+    ]
 
-    doi = None
-    external_ids = paper.get("externalIds", {}) or {}
+    external_ids = paper.get("externalIds") or {}
     doi = external_ids.get("DOI")
 
-    journal = None
-    journal_info = paper.get("journal", {})
-    if journal_info:
-        journal = journal_info.get("name")
+    journal_info = paper.get("journal") or {}
+    journal = journal_info.get("name") if isinstance(journal_info, dict) else None
 
     year = paper.get("year")
-
     abstract = paper.get("abstract")
-
-    keywords = paper.get("fieldsOfStudy", []) or []
-
-    citation_count = paper.get("citationCount", 0) or 0
+    keywords = paper.get("fieldsOfStudy") or []
+    citation_count = paper.get("citationCount") or 0
 
     return Article(
         title=title,

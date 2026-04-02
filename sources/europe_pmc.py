@@ -1,6 +1,7 @@
 """Client Europe PMC REST API."""
 
 import logging
+import re
 import time
 import requests
 
@@ -11,8 +12,22 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 
+# Tags spécifiques à PubMed non supportés par Europe PMC
+_PUBMED_TAGS_RE = re.compile(r"\[[^\]]*(?:MeSH|tiab|tw|pt|sh|nm|rn|sb|majr)[^\]]*\]", re.IGNORECASE)
 
-def search_europe_pmc(keywords: str, date_from: str, date_to: str, max_results: int | None = None) -> list[Article]:
+
+def _adapt_query_for_epmc(keywords: str) -> str:
+    """Nettoie les tags PubMed incompatibles avec Europe PMC."""
+    cleaned = _PUBMED_TAGS_RE.sub("", keywords)
+    # Compresse les espaces/opérateurs résiduels
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    cleaned = re.sub(r"\(\s*\)", "", cleaned).strip()
+    return cleaned
+
+
+def search_europe_pmc(
+    keywords: str, date_from: str, date_to: str, max_results: int | None = None
+) -> list[Article]:
     """Recherche Europe PMC et retourne une liste d'Articles."""
     articles = []
     if max_results is None:
@@ -21,7 +36,9 @@ def search_europe_pmc(keywords: str, date_from: str, date_to: str, max_results: 
     year_from = date_from.split("/")[0] if "/" in date_from else date_from[:4]
     year_to = date_to.split("/")[0] if "/" in date_to else date_to[:4]
 
-    query = f"{keywords} (FIRST_PDATE:[{year_from}-01-01 TO {year_to}-12-31])"
+    # Nettoie les tags PubMed et encapsule correctement la requête
+    clean_keywords = _adapt_query_for_epmc(keywords)
+    query = f"({clean_keywords}) AND (FIRST_PDATE:[{year_from}-01-01 TO {year_to}-12-31])"
     logger.info(f"Europe PMC search: {query}")
 
     cursor_mark = "*"
@@ -36,8 +53,13 @@ def search_europe_pmc(keywords: str, date_from: str, date_to: str, max_results: 
             "resultType": "core",
         }
 
-        response = requests.get(BASE_URL, params=params, timeout=30)
-        response.raise_for_status()
+        try:
+            response = requests.get(BASE_URL, params=params, timeout=30)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            logger.error(f"Europe PMC: erreur réseau: {e}")
+            break
+
         data = response.json()
 
         results = data.get("resultList", {}).get("result", [])
@@ -59,7 +81,6 @@ def search_europe_pmc(keywords: str, date_from: str, date_to: str, max_results: 
         time.sleep(0.5)
 
     logger.info(f"Europe PMC: {len(articles)} articles collectés")
-
     return articles[:max_results]
 
 
@@ -68,10 +89,9 @@ def _parse_result(result: dict) -> Article:
     title = result.get("title", "") or ""
 
     authors_str = result.get("authorString", "") or ""
-    authors = [a.strip() for a in authors_str.split(",") if a.strip()] if authors_str else []
+    authors = [a.strip() for a in authors_str.split(",") if a.strip()]
 
     doi = result.get("doi")
-
     journal = result.get("journalTitle")
 
     year = None
