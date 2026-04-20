@@ -49,12 +49,25 @@ TRANSLATIONS = {
         "llm_verif_label": "LLM pour la verification (Agent 3)",
         "llm_must_differ": "Les 2 modeles doivent etre differents.",
         "llm_key_missing": "Cle API manquante pour {provider}.",
-        # PPTX
+        # PPTX / DOCX
         "pptx_header": "Presentation PPTX",
         "pptx_slides_label": "Nombre de slides",
         "pptx_template_label": "Modele PPTX (optionnel)",
         "pptx_template_help": "Uploadez un fichier PPTX vide pour utiliser ses slide masters, polices et couleurs comme base.",
         "download_pptx": "Telecharger PPTX",
+        "download_docx": "Telecharger Word",
+        # Key points
+        "tab_keypoints": "Points cles",
+        "keypoints_title": "Points cles de la recherche",
+        "keypoints_empty": "Aucun point cle extrait.",
+        # Q&A chat
+        "tab_qa": "Questions / Suivi",
+        "qa_intro": "Posez des questions complementaires sur le corpus et le rapport sans relancer la recherche.",
+        "qa_input_placeholder": "Votre question sur le corpus ou le rapport...",
+        "qa_send": "Envoyer",
+        "qa_clear": "Effacer la conversation",
+        "qa_context_missing": "Lancez d'abord une recherche pour activer le chat de suivi.",
+        "qa_thinking": "Reflexion en cours...",
         # Errors / warnings
         "error_no_keywords": "Veuillez entrer des mots-cles de recherche.",
         "warning_no_llm_key": (
@@ -168,12 +181,25 @@ TRANSLATIONS = {
         "llm_verif_label": "LLM for verification (Agent 3)",
         "llm_must_differ": "The 2 models must be different.",
         "llm_key_missing": "API key missing for {provider}.",
-        # PPTX
+        # PPTX / DOCX
         "pptx_header": "PPTX Presentation",
         "pptx_slides_label": "Number of slides",
         "pptx_template_label": "PPTX template (optional)",
         "pptx_template_help": "Upload a blank PPTX file to use its slide masters, fonts and colors as a base.",
         "download_pptx": "Download PPTX",
+        "download_docx": "Download Word",
+        # Key points
+        "tab_keypoints": "Key Points",
+        "keypoints_title": "Research Key Points",
+        "keypoints_empty": "No key points extracted.",
+        # Q&A chat
+        "tab_qa": "Follow-up Q&A",
+        "qa_intro": "Ask follow-up questions about the corpus and the report without restarting the search.",
+        "qa_input_placeholder": "Your question about the corpus or report...",
+        "qa_send": "Send",
+        "qa_clear": "Clear conversation",
+        "qa_context_missing": "Run a search first to activate the follow-up chat.",
+        "qa_thinking": "Thinking...",
         # Errors / warnings
         "error_no_keywords": "Please enter search keywords.",
         "warning_no_llm_key": (

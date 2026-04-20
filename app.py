@@ -17,6 +17,8 @@ from agents.agent3_editor import run_editing
 from utils.bibtex_export import generate_bibtex
 from utils.pdf_report import generate_html_report
 from utils.pptx_report import generate_pptx
+from utils.docx_report import generate_docx
+from utils.qa_agent import answer_question
 from llm_client import CLAUDE, MISTRAL, PERPLEXITY, PROVIDER_LABELS, is_provider_available
 from i18n import t
 
@@ -304,7 +306,7 @@ def main():
                 log_area_2.markdown("\n\n".join(logs_2))
 
             try:
-                report_markdown, cited_metadata = run_analysis(
+                report_markdown, key_points, cited_metadata = run_analysis(
                     articles=articles,
                     progress_callback=progress_2,
                     lang=lang,
@@ -327,6 +329,7 @@ def main():
             status2.update(label=f"✅ {t('agent2_done', lang)}", state="complete")
 
         st.session_state["report_markdown"] = report_markdown
+        st.session_state["key_points"] = key_points
 
         # ---- Agent 3 : Editing (selected LLM for verification) ---------------
         with st.status(f"🎨 {t('agent3_status', lang)} [{PROVIDER_LABELS[llm_verif]}]", expanded=True) as status3:
@@ -391,11 +394,28 @@ def main():
                 with open(pptx_path, "rb") as f:
                     pptx_bytes = f.read()
 
+            # Generate DOCX report
+            docx_path = generate_docx(
+                report_markdown=report_markdown,
+                articles=articles,
+                editor_report=editor_report,
+                keywords=keywords,
+                date_from=date_from,
+                date_to=date_to,
+                key_points=key_points,
+                lang=lang,
+            )
+            docx_bytes = b""
+            if os.path.exists(docx_path):
+                with open(docx_path, "rb") as f:
+                    docx_bytes = f.read()
+
             status_export.update(label=f"✅ {t('exports_done', lang)}", state="complete")
 
         st.session_state["bibtex_content"] = bibtex_content
         st.session_state["html_report"] = html_report
         st.session_state["pptx_bytes"] = pptx_bytes
+        st.session_state["docx_bytes"] = docx_bytes
 
         st.success(f"🎉 {t('pipeline_done', lang)}")
 
@@ -409,14 +429,17 @@ def _display_results():
     lang = _get_lang()
     articles = st.session_state["articles"]
     report_markdown = st.session_state.get("report_markdown", "")
+    key_points = st.session_state.get("key_points", [])
     editor_report = st.session_state.get("editor_report")
     bibtex_content = st.session_state.get("bibtex_content", "")
     html_report = st.session_state.get("html_report", "")
     pptx_bytes = st.session_state.get("pptx_bytes", b"")
+    docx_bytes = st.session_state.get("docx_bytes", b"")
 
     st.divider()
 
-    col_dl1, col_dl2, col_dl3, col_dl4 = st.columns(4)
+    # ---- Download buttons (2 rows × 3 cols) ----------------------------------
+    col_dl1, col_dl2, col_dl3 = st.columns(3)
 
     with col_dl1:
         st.download_button(
@@ -426,7 +449,6 @@ def _display_results():
             mime="application/json",
             use_container_width=True,
         )
-
     with col_dl2:
         st.download_button(
             f"📥 {t('download_bibtex', lang)}",
@@ -435,7 +457,6 @@ def _display_results():
             mime="text/plain",
             use_container_width=True,
         )
-
     with col_dl3:
         if html_report:
             st.download_button(
@@ -448,6 +469,8 @@ def _display_results():
         else:
             st.button(f"📥 {t('report_unavailable', lang)}", disabled=True, use_container_width=True)
 
+    col_dl4, col_dl5, col_dl6 = st.columns(3)
+
     with col_dl4:
         if pptx_bytes:
             st.download_button(
@@ -459,16 +482,39 @@ def _display_results():
             )
         else:
             st.button(f"📥 {t('download_pptx', lang)}", disabled=True, use_container_width=True)
+    with col_dl5:
+        if docx_bytes:
+            st.download_button(
+                f"📥 {t('download_docx', lang)}",
+                data=docx_bytes,
+                file_name="rapport_bibliographique.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
+        else:
+            st.button(f"📥 {t('download_docx', lang)}", disabled=True, use_container_width=True)
+    with col_dl6:
+        pass  # réservé
 
-    tab_report, tab_figures, tab_data, tab_verification = st.tabs([
+    tab_report, tab_keypoints, tab_figures, tab_data, tab_verification, tab_qa = st.tabs([
         f"📝 {t('tab_report', lang)}",
+        f"🔑 {t('tab_keypoints', lang)}",
         f"📊 {t('tab_figures', lang)}",
         f"📋 {t('tab_data', lang)}",
         f"🔍 {t('tab_verification', lang)}",
+        f"💬 {t('tab_qa', lang)}",
     ])
 
     with tab_report:
         st.markdown(report_markdown, unsafe_allow_html=True)
+
+    with tab_keypoints:
+        st.subheader(t("keypoints_title", lang))
+        if key_points:
+            for i, point in enumerate(key_points, 1):
+                st.markdown(f"**{i}.** {point}")
+        else:
+            st.info(t("keypoints_empty", lang))
 
     with tab_figures:
         if editor_report and editor_report.figures_generated:
@@ -520,6 +566,64 @@ def _display_results():
                         st.info(f"**{t('label_source', lang)}** {v.source}")
         else:
             st.info(t("verification_unavailable", lang))
+
+    with tab_qa:
+        _render_qa_tab(lang, articles, report_markdown)
+
+
+def _render_qa_tab(lang: str, articles, report_markdown: str):
+    """Chat de suivi — questions complémentaires sans relancer la pipeline."""
+    if not report_markdown or not articles:
+        st.info(t("qa_context_missing", lang))
+        return
+
+    st.markdown(t("qa_intro", lang))
+
+    # Initialise l'historique de chat dans la session
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+    # Affiche l'historique existant
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Bouton pour effacer
+    if st.session_state["chat_history"]:
+        if st.button(t("qa_clear", lang), key="qa_clear_btn"):
+            st.session_state["chat_history"] = []
+            st.rerun()
+
+    # Champ de saisie
+    user_input = st.chat_input(t("qa_input_placeholder", lang), key="qa_input")
+
+    if user_input:
+        # Détermine le provider LLM (même que le rapport)
+        raw_idx = st.session_state.get("llm_report_select", 0)
+        try:
+            llm_provider = LLM_OPTIONS[raw_idx]
+        except (IndexError, TypeError):
+            llm_provider = CLAUDE
+
+        # Affiche la question de l'utilisateur
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        st.session_state["chat_history"].append({"role": "user", "content": user_input})
+
+        # Génère et affiche la réponse
+        with st.chat_message("assistant"):
+            with st.spinner(t("qa_thinking", lang)):
+                answer = answer_question(
+                    question=user_input,
+                    report_markdown=report_markdown,
+                    articles=articles,
+                    chat_history=st.session_state["chat_history"][:-1],
+                    lang=lang,
+                    llm_provider=llm_provider,
+                )
+            st.markdown(answer)
+
+        st.session_state["chat_history"].append({"role": "assistant", "content": answer})
 
 
 if __name__ == "__main__":

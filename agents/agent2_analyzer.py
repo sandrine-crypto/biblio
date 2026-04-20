@@ -114,6 +114,40 @@ SUBSET:
 {corpus}""",
 }
 
+KEY_POINTS_PROMPTS = {
+    "fr": """A partir du rapport de revue bibliographique ci-dessous, extrais les 10 a 15 points cles les plus importants.
+
+Chaque point doit :
+- Etre une conclusion factuelle precise, tracee vers sa source
+- Mentionner les auteurs/annee ou DOI de l'article source
+- Etre formule de facon concise (1-2 phrases max)
+- Etre independant et comprehensible sans contexte
+
+Format de reponse STRICT — une liste Markdown, un point par ligne :
+- [Point factuel precis avec source entre parentheses (Auteur et al., ANNEE)]
+
+N'invente rien. Ne repete pas les memes points. Commence directement par le premier tiret.
+
+RAPPORT :
+{report}""",
+
+    "en": """From the bibliographic review report below, extract the 10 to 15 most important key points.
+
+Each point must:
+- Be a precise factual finding, traced to its source
+- Mention the authors/year or DOI of the source article
+- Be formulated concisely (1-2 sentences max)
+- Be self-contained and understandable without context
+
+STRICT response format — a Markdown list, one point per line:
+- [Precise factual point with source in parentheses (Author et al., YEAR)]
+
+Do not invent anything. Do not repeat the same points. Start directly with the first bullet.
+
+REPORT:
+{report}""",
+}
+
 REDUCE_PROMPTS = {
     "fr": """Tu recois {n} syntheses partielles d'un corpus scientifique plus large.
 Consolide-les en UN SEUL rapport unifie avec la structure suivante :
@@ -226,8 +260,8 @@ def run_analysis(
     progress_callback=None,
     lang: str = "fr",
     llm_provider: str = "claude",
-) -> tuple[str, list[dict]]:
-    """Analyze the corpus and produce a scientific report.
+) -> tuple[str, list[str], list[dict]]:
+    """Analyze the corpus and produce a scientific report with key points.
 
     Args:
         articles: Deduplicated article list
@@ -236,7 +270,7 @@ def run_analysis(
         llm_provider: LLM provider to use ('claude', 'mistral', or 'perplexity')
 
     Returns:
-        Tuple (report_markdown, cited_article_metadata)
+        Tuple (report_markdown, key_points, cited_article_metadata)
     """
     from llm_client import is_provider_available
 
@@ -246,7 +280,7 @@ def run_analysis(
         logger.warning(msg)
         if progress_callback:
             progress_callback(msg)
-        return _generate_fallback_report(articles, lang), _extract_cited_metadata(articles)
+        return _generate_fallback_report(articles, lang), [], _extract_cited_metadata(articles)
 
     def log_progress(msg: str):
         logger.info(msg)
@@ -269,10 +303,20 @@ def run_analysis(
         log_progress("📦 Corpus too large, activating Map-Reduce...")
         report = _map_reduce_analysis(llm_provider, articles, system_prompt, lang, log_progress)
 
+    # Extract key points from the generated report
+    log_progress("🔑 Extracting key points..." if lang == "en" else "🔑 Extraction des points clés...")
+    key_points = _extract_key_points(llm_provider, report, system_prompt, lang)
+    log_progress(f"✅ {len(key_points)} key points extracted" if lang == "en"
+                 else f"✅ {len(key_points)} points clés extraits")
+
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
     report_path = os.path.join(config.OUTPUT_DIR, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
+
+    kp_path = os.path.join(config.OUTPUT_DIR, "key_points.json")
+    with open(kp_path, "w", encoding="utf-8") as f:
+        json.dump(key_points, f, ensure_ascii=False, indent=2)
 
     cited_metadata = _extract_cited_metadata(articles)
     meta_path = os.path.join(config.OUTPUT_DIR, "cited_articles.json")
@@ -280,7 +324,26 @@ def run_analysis(
         json.dump(cited_metadata, f, ensure_ascii=False, indent=2)
 
     log_progress("✅ Analysis report generated")
-    return report, cited_metadata
+    return report, key_points, cited_metadata
+
+
+def _extract_key_points(provider: str, report: str, system_prompt: str, lang: str) -> list[str]:
+    """Extract structured key points from the generated report."""
+    try:
+        prompt_template = KEY_POINTS_PROMPTS.get(lang, KEY_POINTS_PROMPTS["en"])
+        prompt = prompt_template.format(report=report[:12000])  # cap to avoid token overflow
+        raw = call_llm(provider, system_prompt, prompt, max_tokens=2048)
+        points = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if line.startswith("- ") or line.startswith("* "):
+                point = line[2:].strip()
+                if point:
+                    points.append(point)
+        return points if points else [raw.strip()]
+    except Exception as e:
+        logger.warning(f"Key points extraction failed: {e}")
+        return []
 
 
 def _single_pass_analysis(provider: str, corpus_text: str, system_prompt: str, lang: str, log_progress) -> str:
